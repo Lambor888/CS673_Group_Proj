@@ -13,3 +13,9 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+
+
+# What /auth/login returns.
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

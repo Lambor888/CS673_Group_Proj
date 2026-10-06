@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     # CI/deploy: set DATABASE_URL=postgresql+psycopg://user:pass@host/db
     database_url: str = f"sqlite:///{BACKEND_DIR / 'dev.db'}"
 
+    # Signs login tokens. The default is for local dev only;
+    # deployments MUST set JWT_SECRET or anyone reading the repo can forge tokens.
+    jwt_secret: str = "dev-only-secret-change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24  # 24 hours
+
     model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env")
 
 
