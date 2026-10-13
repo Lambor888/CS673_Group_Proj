@@ -1,5 +1,5 @@
 import uuid
-from app.main import Entity, Player, ConnectionManager, LobbyManager, Lobby
+from app.modules.lobby.service import Entity, Player, ConnectionManager, LobbyManager, Lobby
 import unittest
 def test_entity_ids():
     assert Player().get_id() != Player().get_id()
@@ -34,6 +34,3 @@ def test_max_players():
         lobby.add_player(p)
 
     assert len(lobby.players) == 5
-
-
-        

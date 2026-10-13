@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import User
+from app.modules.auth.models import User
 
 
 def test_user_roundtrip(db_session):

@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app import models  # noqa: F401  (registers tables on Base.metadata)
+from app.modules.auth import models  # noqa: F401  (registers tables on Base.metadata)
 from app.db import Base, get_db
 from app.main import app
 

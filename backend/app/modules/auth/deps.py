@@ -3,8 +3,8 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import User
-from app.security import decode_access_token
+from app.modules.auth.models import User
+from app.modules.auth.security import decode_access_token
 
 # Reads "Authorization: Bearer <token>" and powers the Authorize button in /docs.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")

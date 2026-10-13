@@ -1,4 +1,4 @@
-from app.models import User
+from app.modules.auth.models import User
 
 
 def register(client, username="alice", password="password123"):

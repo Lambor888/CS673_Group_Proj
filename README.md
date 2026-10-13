@@ -205,16 +205,24 @@ Delete `backend/dev.db`, then run `uv run alembic upgrade head`.
 ```
 backend/
 ├── app/
-│   ├── main.py          # starts the app
-│   ├── config.py        # settings
-│   ├── db.py            # database connection
-│   ├── models.py        # database tables
-│   ├── schemas.py       # what the API accepts and returns
-│   ├── security.py      # password hashing + login tokens
-│   ├── deps.py          # get_current_user (login check)
-│   └── routers/
-│       └── auth.py      # /auth endpoints
+│   ├── main.py          # creates the app, registers routers, serves /health
+│   ├── config.py        # shared settings
+│   ├── db.py            # shared database connection and Base
+│   ├── scoring.py       # existing distance calculation utility
+│   └── modules/
+│       ├── auth/
+│       │   ├── router.py    # /auth/register, /auth/login, /auth/me
+│       │   ├── models.py    # User database model
+│       │   ├── schemas.py   # authentication request/response models
+│       │   ├── security.py  # password hashing and JWT helpers
+│       │   └── deps.py      # get_current_user dependency
+│       └── lobby/
+│           ├── router.py    # existing /ws entry point and runtime state
+│           └── service.py   # existing player, lobby, and manager classes
 ├── migrations/          # database changes (Alembic)
 ├── tests/
 └── pyproject.toml       # dependencies
 ```
+
+Backend business modules live under `app/modules/`. Their boundaries do not need to match frontend pages; future ranking logic can become its own module. Shared configuration and database infrastructure remain at the app level.
+

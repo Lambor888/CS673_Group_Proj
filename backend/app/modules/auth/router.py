@@ -4,10 +4,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user
-from app.models import User
-from app.schemas import Token, UserCreate, UserOut
-from app.security import DUMMY_HASH, create_access_token, hash_password, verify_password
+from app.modules.auth.deps import get_current_user
+from app.modules.auth.models import User
+from app.modules.auth.schemas import Token, UserCreate, UserOut
+from app.modules.auth.security import DUMMY_HASH, create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
