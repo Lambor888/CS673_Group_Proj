@@ -1,0 +1,10 @@
+:root {
+  font-family: Arial, 'Microsoft YaHei', sans-serif;
+  color: #222;
+  background: #fff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .6; }
