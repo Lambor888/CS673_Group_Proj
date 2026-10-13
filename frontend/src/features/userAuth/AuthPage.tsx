@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { SubmitEvent } from 'react'
 import { login, register } from './api'
 import type { User } from './api'
 import './AuthPage.css'
@@ -24,7 +24,7 @@ export function AuthPage() {
     setNotice('')
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting.current) return
     setError('')

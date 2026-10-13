@@ -15,3 +15,5 @@ __pycache__/
 # Local databases
 *.db
 *.db-journal
+# Local development server logs
+.dev-logs/

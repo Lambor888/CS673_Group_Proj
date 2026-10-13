@@ -1,75 +1,57 @@
-# React + TypeScript + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite. See the [project README](../README.md) for backend setup and team conventions.
 
-Currently, two official plugins are available:
+## Start frontend and backend together
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+From this `frontend/` directory, run:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+cd ..
+python start-dev.py
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+On macOS, use `python3 start-dev.py`. This requires Python 3.11+, Node.js/npm, and uv. Alternatively, run `uv run --no-project --python 3.11 start-dev.py` from the repository root.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The script installs dependencies, applies database migrations, and starts both services. Logs appear in the same terminal. Press **Ctrl+C** to stop both services. Stop any existing servers on ports 8000 and 5173 first.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+See [Quick start](../README.md#quick-start-run-both-services) for full instructions.
 
+## Run the frontend separately
+
+Install Node.js 24 LTS, which includes npm. From this directory:
+
+```bash
+npm ci
+npm run dev
 ```
+
+On Windows PowerShell, use `npm.cmd` if `npm.ps1` is blocked. The project is already initialized; do not run `create-vite` again.
+
+Open the URL printed by Vite, normally http://localhost:5173. Run the FastAPI backend on port 8000 in a separate terminal. The development proxy forwards `/api/*` to the backend and removes `/api`.
+
+## Source organization
+
+- `src/features/<featureName>/`: one folder per feature, containing its pages, components, logic, and styles.
+- `src/common/`: reusable components shared across features.
+- `src/assets/`: image and icon source files, optionally grouped by feature.
+- `src/App.tsx`: page composition and application routing.
+- `src/main.tsx`: application entry point.
+- `src/index.css`: global styles.
+
+Keep a component and its CSS together. Use English for comments, user-facing text, and documentation. Use lower camel case for feature folders and PascalCase for React component filenames.
+
+## Checks
+
+```bash
+npx tsc -b --pretty false
+npm run lint
+```
+
+`npm run build` creates production output in `dist/`. This folder is generated and ignored by Git; do not edit it or store source images there. It is not needed for `npm run dev`.
+
+Commit `package.json` and `package-lock.json`, but not `node_modules/`, `dist/`, secrets, or local environment files. After pulling dependency changes, run `npm ci` again.
+
+## Current authentication behavior
+
+Registration and login call the existing FastAPI endpoints. Login state is stored in memory and resets on page refresh. API calls currently use a handwritten adapter in `src/features/userAuth/api.ts`; OpenAPI client generation has not been configured yet.
