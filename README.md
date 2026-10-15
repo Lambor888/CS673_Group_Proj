@@ -183,6 +183,12 @@ uv run pytest
 
 Tests use a temporary database and never touch your `dev.db`.
 
+### Automatic checks
+
+GitHub Actions runs backend tests (Python 3.12) and frontend build/type checks
+and lint (Node.js 24) on every pull request and push to `main`. Both jobs install
+from the committed lockfiles. See the PR's **Checks** tab for results.
+
 ## After every `git pull`
 
 From `backend/`:
