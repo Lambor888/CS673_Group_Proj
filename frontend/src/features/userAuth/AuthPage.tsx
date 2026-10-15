@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { SubmitEvent } from 'react'
 import { login, register } from './api'
 import type { User } from './api'
+import { useNavigate } from 'react-router-dom';
 import './AuthPage.css'
 
 export function AuthPage() {
@@ -15,7 +16,11 @@ export function AuthPage() {
   const [session, setSession] = useState<{ user: User; token: string } | null>(null)
   const submitting = useRef(false)
   const isRegister = mode === 'register'
+  const navigate = useNavigate()
 
+  function handler(){
+    navigate('/HomePage')
+  }
   function changeMode(next: 'login' | 'register') {
     setMode(next)
     setPassword('')
@@ -61,6 +66,7 @@ export function AuthPage() {
             <h2 id="auth-title">Welcome, {session.user.username}</h2>
             <dl className="user-details"><dt>Username</dt><dd>{session.user.username}</dd><dt>User ID</dt><dd>{session.user.id}</dd></dl>
             <button className="primary-button" onClick={() => { setSession(null); setNotice('You have been logged out.') }}>Log out</button>
+            <button className="primary-button" onClick={() => { handler() }}>Home Page</button>
           </> : <>
 <h2 id="auth-title">{isRegister ? 'Sign up' : 'Log in'}</h2>
             {notice && <p className="form-notice" role="status">{notice}</p>}
