@@ -36,7 +36,16 @@ export async function login(credentials: Credentials) {
   const user = await request<User>('me', {
     headers: { Authorization: `Bearer ${token.access_token}` },
   })
+  localStorage.setItem('username', user.username)
+  localStorage.setItem('token', token.access_token)
+
   return { user, token: token.access_token }
 }
 
+export function getToken(){
+  return localStorage.getItem('token')
+}
+export function getUsername(){
+  return localStorage.getItem('username')
+}
 
