@@ -1,5 +1,5 @@
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from uuid import UUID
 
 class Entity:
@@ -29,29 +29,28 @@ class ConnectionManager(Entity):
         self.sockets.pop(player.get_id, None)
 
 class LobbyManager(Entity):
+    # Local, single-process storage; rooms disappear when the server restarts.
     def __init__(self):
         super().__init__()
         self.lobbies = {}
-        
 
     def create_lobby(self, host):
         lobby = Lobby()
         lobby.initialize_lobby(host)
-        lobby_id = self.get_id()
-        self.lobbies[lobby_id] = False
+        self.lobbies[lobby.get_id()] = lobby
         return lobby
+
+    def get_lobby(self, lobby_id):
+        return self.lobbies.get(lobby_id)
 
     def get_all_lobbies(self):
         self.destroy_lobbies()
         return list(self.lobbies.values())
 
     def destroy_lobbies(self):
-        for lobby, deletion_flag in self.lobbies.items():
-            if deletion_flag == True:
-                self.lobbies.pop(lobby, None)
-
-        
-        
+        for lobby_id, lobby in list(self.lobbies.items()):
+            if lobby.flag:
+                self.lobbies.pop(lobby_id)
 
 
 class Lobby(Entity):
@@ -62,26 +61,31 @@ class Lobby(Entity):
         self.players = {}
         self.host_id = None
         self.flag = False
-        self.num_players = 1
         self.max_players = 5
+
+    @property
+    def num_players(self):
+        return len(self.players)
 
     def initialize_lobby(self, host):
         self.host_id = host.p_id
         self.players[self.host_id] = host
-    
-    def add_player(self, player): 
-        if self.num_players < self.max_players:
-            p = player.p_id
-            self.players[p] = player
-        else:
-            raise Exception("Too many players")
+
+    def add_player(self, player):
+        if player.p_id in self.players:
+            return
+        if self.is_full():
+            raise ValueError("Too many players")
+        self.players[player.p_id] = player
 
     def is_full(self):
         return self.num_players >= self.max_players
 
-    def remove_player(self, player):
-        p= player.p_id
-        self.players.pop(p)
+    def remove_player(self, player_id):
+        self.players.pop(player_id, None)
+        if player_id == self.host_id:
+            # Hand hosting to the first remaining player, or None if empty.
+            self.host_id = next(iter(self.players), None)
         if not self.players:
             self.flag = True
 
@@ -90,6 +94,14 @@ class Lobby(Entity):
 
 class LobbyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=20)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, name):
+        name = name.strip()
+        if not name:
+            raise ValueError("Lobby name cannot be blank")
+        return name
 
 class PlayerOut(BaseModel):
     id: int
