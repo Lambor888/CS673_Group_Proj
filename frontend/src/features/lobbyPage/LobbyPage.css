@@ -1,0 +1,55 @@
+.create-leave-button {
+  display: flex;
+  justify-content: center;
+  padding: 10px 18px;
+  padding-top: 15px;
+  border: none;
+  border-radius: 6px;
+  background: #4f46e5;
+  color: #ffffff;
+  font-size: 1rem;
+  cursor: pointer;
+  align-items: center;
+}
+
+.create-leave-button:hover:not(:disabled) {
+  background: #4338ca;
+}
+
+.create-leave-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.create-leave-error {
+  margin: 8px 0 0;
+  color: #b42318;
+  font-size: 0.9rem;
+}
+
+.lobby-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;     
+  justify-content: center; 
+}
+
+.player-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+  padding-bottom: 10px;
+}
+
+.player-card {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 12px 16px;
+  background: #fafafa;
+}

@@ -1,4 +1,6 @@
-.create-lobby-button {
+.create-button {
+  display: flex;
+  justify-content: center;
   padding: 10px 18px;
   border: none;
   border-radius: 6px;
@@ -6,19 +8,34 @@
   color: #ffffff;
   font-size: 1rem;
   cursor: pointer;
+  align-items: center;
 }
 
-.create-lobby-button:hover:not(:disabled) {
+.home-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;     
+  justify-content: center; 
+  gap: 20px;
+}
+
+.create-button:hover:not(:disabled) {
   background: #4338ca;
 }
 
-.create-lobby-button:disabled {
+.create-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.create-lobby-error {
+.create-error {
   margin: 8px 0 0;
   color: #b42318;
   font-size: 0.9rem;
+}
+
+.join-form {
+  display: flex;
+  gap: 8px;
 }

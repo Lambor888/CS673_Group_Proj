@@ -1,6 +1,9 @@
 import uuid
 from pydantic import BaseModel, Field
 from uuid import UUID
+import secrets
+import string
+import websockets
 
 class Entity:
     def __init__(self):
@@ -13,20 +16,11 @@ class Entity:
         return self.id == ent.id
 
 class Player(Entity):
-    def __init__(self, p_id):
+    def __init__(self, p_id, name):
         super().__init__()
         self.p_id = p_id
+        self.username = name
 
-
-class ConnectionManager(Entity):
-    def __int__(self):
-        self.sockets = {}
-
-    def register_player(self, player, websocket):  #Assume that player is an object
-        self.sockets[player.get_id] = websocket
-
-    def unregister_player(self, player): #Assume that player is an object
-        self.sockets.pop(player.get_id, None)
 
 class LobbyManager(Entity):
     def __init__(self):
@@ -37,8 +31,7 @@ class LobbyManager(Entity):
     def create_lobby(self, host):
         lobby = Lobby()
         lobby.initialize_lobby(host)
-        lobby_id = self.get_id()
-        self.lobbies[lobby_id] = False
+        self.lobbies[lobby.id] = lobby
         return lobby
 
     def get_all_lobbies(self):
@@ -46,15 +39,16 @@ class LobbyManager(Entity):
         return list(self.lobbies.values())
 
     def destroy_lobbies(self):
-        for lobby, deletion_flag in self.lobbies.items():
-            if deletion_flag == True:
-                self.lobbies.pop(lobby, None)
+        for key, lobby in self.lobbies.items():
+            if lobby.flag == True:
+                self.lobbies.pop(key, None)
 
         
         
 
 
 class Lobby(Entity):
+    valid_characters = string.ascii_uppercase + string.digits
     def __init__(self):
         super().__init__()
         self.name = "Lobby {}".format(self.get_id())
@@ -64,6 +58,10 @@ class Lobby(Entity):
         self.flag = False
         self.num_players = 1
         self.max_players = 5
+        self.code = self.generate_lobby_code(6)
+
+    def generate_lobby_code(self, length):
+        return ''.join(secrets.choice(Lobby.valid_characters) for _ in range(length))
 
     def initialize_lobby(self, host):
         self.host_id = host.p_id
@@ -93,6 +91,7 @@ class LobbyCreate(BaseModel):
 
 class PlayerOut(BaseModel):
     id: int
+    name: str
 
 class LobbyOut(BaseModel):
     id: UUID
@@ -102,4 +101,5 @@ class LobbyOut(BaseModel):
     num_players: int
     max_players: int
     flag: bool
+    code: str
 
