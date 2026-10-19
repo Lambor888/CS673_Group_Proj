@@ -1,0 +1,13 @@
+.guess-map {
+  width: min(340px, calc(100vw - 32px)); background: white;
+  border-radius: 10px; overflow: hidden; box-shadow: 0 3px 20px #0005;
+}
+.guess-map--expanded { width: min(640px, calc(100vw - 32px)); }
+.guess-map__toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; gap: 12px; font-size: 13px; }
+.guess-map__toolbar button { border: 1px solid #cbd5e1; border-radius: 5px; background: white; padding: 5px 8px; }
+.guess-map__body { position: relative; height: min(220px, 35dvh); }
+.guess-map--expanded .guess-map__body { height: min(420px, 55dvh); }
+.guess-map__canvas { width: 100%; height: 100%; background: #dbeafe; }
+.guess-map__status { position: absolute; inset: 20px; margin: 0; display: grid; place-items: center; text-align: center; background: #ffffffed; padding: 12px; }
+.guess-map__selection { margin: 0; padding: 9px 12px; text-align: center; font-size: 12px; }
+.guess-map__pin { position: absolute; width: 18px; height: 18px; background: #4f46e5; border: 3px solid white; border-radius: 50%; box-shadow: 0 1px 6px #0008; transform: translate(-50%, -50%); pointer-events: none; }

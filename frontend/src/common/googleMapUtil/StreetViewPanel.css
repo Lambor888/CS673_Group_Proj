@@ -1,0 +1,7 @@
+.street-view-panel, .street-view-panel__canvas { width: 100%; height: 100%; }
+.street-view-panel { position: relative; isolation: isolate; z-index: 0; overflow: hidden; background: #202b36; }
+.street-view-panel__status {
+  position: absolute; z-index: 1; top: 45%; left: 50%; transform: translate(-50%, -50%);
+  margin: 0; padding: 16px 20px; border-radius: 8px; background: #fff;
+  width: max-content; max-width: 90%; text-align: center;
+}

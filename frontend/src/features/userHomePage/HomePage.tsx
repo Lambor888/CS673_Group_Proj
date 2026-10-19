@@ -1,42 +1,25 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { createLobby } from './api'
-import {getToken, getUsername} from '../userAuth/api'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { getToken, getUsername } from '../userAuth/api'
 import './HomePage.css'
 
+export function HomePage() {
+  const navigate = useNavigate()
+  const token = getToken()
+  const username = getUsername()
+  if (!token) return <Navigate to="/authpage" replace />
 
-export function HomePage(){
-
-    const navigate = useNavigate()
-    const [creating, setCreating] = useState(false)
-    const [lobbyError, setLobbyError] = useState<string | null>(null)
-    const token: string | null = getToken()
-    const username = getUsername()
-    if (!token) { 
-        navigate('/login'); 
-        return 
-    }
-
-    async function handleCreateLobby() {
-    setLobbyError(null)
-    setCreating(true)
-    try {
-        const lobby = await createLobby(token, `${username}'s lobby`)
-        navigate(`/lobby/${lobby.id}`)
-    } catch (e) {
-        setLobbyError(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
-        setCreating(false)
-    }
-    }
-
-    return (
-        <main>
-        <button className="create-lobby-button" onClick={handleCreateLobby} disabled={creating}>
-            {creating ? 'Creating…' : 'Create lobby'}
+  return (
+    <main className="home-page">
+      <header className="home-page__header">
+        <nav className="home-page__menu" aria-label="Game modes">
+          <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>
+          <button type="button">lobby</button>
+        </nav>
+        <button type="button" className="home-page__player" aria-label={`Player info: ${username ?? 'Player'}`}>
+          <span>Player info</span>
+          <strong>{username ?? 'Player'}</strong>
         </button>
-        {lobbyError && <p className="create-lobby-error" role="alert">{lobbyError}</p>}
-        </main>
-    )
-
-
+      </header>
+    </main>
+  )
 }
