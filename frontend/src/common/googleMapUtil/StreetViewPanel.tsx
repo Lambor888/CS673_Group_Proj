@@ -2,15 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { loadStreetView } from './googleMapsLoader'
 import './StreetViewPanel.css'
 
+// Pass panoId to show an exact panorama (a game round), or position to search
+// for the nearest one. Game rounds pass only panoId so the answer's coordinates
+// never reach the browser before the guess.
 interface Props {
-  position: google.maps.LatLngLiteral
+  position?: google.maps.LatLngLiteral
   panoId?: string
 }
 
 export function StreetViewPanel({ position, panoId }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState('Loading street view…')
-  const { lat, lng } = position
+  const lat = position?.lat
+  const lng = position?.lng
 
   useEffect(() => {
     let cancelled = false
@@ -23,6 +27,7 @@ export function StreetViewPanel({ position, panoId }: Props) {
         if (cancelled) return
         let pano = panoId
         if (!pano) {
+          if (lat === undefined || lng === undefined) throw new Error('Pass panoId or position')
           const { data } = await new StreetViewService().getPanorama({
           location: { lat, lng }, radius: 150,
           sources: [StreetViewSource.GOOGLE, StreetViewSource.OUTDOOR],

@@ -1,11 +1,14 @@
 export interface GuessResult {
   distance_km: number
+  score: number
   guess: google.maps.LatLngLiteral
+  // The true location. The server only sends it after the guess is scored.
+  answer: google.maps.LatLngLiteral
 }
 
 export interface Round {
   round_id: string
-  location: { pano_id: string; lat: number; lng: number }
+  pano_id: string
   result: GuessResult | null
 }
 
