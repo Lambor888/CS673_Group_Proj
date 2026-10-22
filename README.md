@@ -102,6 +102,30 @@ uv run alembic upgrade head
 
 `uv sync` installs the dependencies. `alembic upgrade head` creates your local database (`backend/dev.db`).
 
+## Google Maps keys (needed for single player)
+
+Login and lobbies work without this. **Single player won't start until you do these steps once.**
+
+**1. Get a key.** If a teammate already has one, ask them for it and skip to step 2. Otherwise:
+1. Go to https://console.cloud.google.com and create a project. Google asks you to add billing, but normal development use is free.
+2. Open **APIs & Services → Library**. Search for and **Enable** both **Maps JavaScript API** and **Street View Static API**.
+3. Open **APIs & Services → Credentials → Create credentials → API key**. Copy the key.
+
+**2. Create the two key files.** Run this from the repository root (it works in PowerShell too):
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+```
+
+**3. Paste your key** after the `=` in both files, with no spaces or quotes:
+- `backend/.env` → `GOOGLE_MAPS_API_KEY=your-key`
+- `frontend/.env.local` → `VITE_GOOGLE_MAPS_API_KEY=your-key`
+
+**4. Restart:** press `Ctrl+C`, then run `python start-dev.py` again.
+
+⚠ **Never commit or share these files publicly.** Git already ignores them. If you ever see `.env` or `.env.local` in `git status`, stop and ask.
+
 ## Run the backend
 
 ### Start the backend individually
