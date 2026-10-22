@@ -58,8 +58,8 @@ export function SinglePlayerPage() {
   return (
     <main className="single-player-page">
       <header className="single-player-page__top" />
-      {round ? <GameCanvas key={round.round_id} position={round.location}
-        panoId={round.location.pano_id} onGuessChange={setGuess}
+      {round ? <GameCanvas key={round.round_id}
+        panoId={round.pano_id} onGuessChange={setGuess}
         initialGuess={round.result?.guess} disabled={pending || round.result !== null} />
         : <div className="single-player-page__loading" role="status">
           {pending ? 'Finding a street-view location…' : 'No round loaded.'}
@@ -70,9 +70,11 @@ export function SinglePlayerPage() {
             disabled={pending || (!!round && !round.result && !guess)}>
             {pending ? 'Please wait…' : !round ? 'Retry' : round.result ? 'Next round' : 'Submit guess'}
           </button>
-          <label htmlFor="round-distance">Distance</label>
-          <input id="round-distance" readOnly value={round?.result ? `${round.result.distance_km.toFixed(3)} km` : ''}
-            placeholder="Submit a guess to see distance" />
+          <label htmlFor="round-result">Result</label>
+          <input id="round-result" readOnly value={round?.result
+            ? `${round.result.score.toLocaleString()} pts · ${round.result.distance_km.toFixed(3)} km`
+            : ''}
+            placeholder="Submit a guess to see your score" />
         </div>
         {error && <p className="single-player-page__error" role="alert">{error}</p>}
       </footer>

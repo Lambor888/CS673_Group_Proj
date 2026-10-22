@@ -32,11 +32,13 @@ export function StreetViewExample() {
 }
 ```
 
-| Required prop | Type | Meaning |
+Pass exactly one of these props:
+
+| Prop | Type | Meaning |
 | --- | --- | --- |
+| `panoId` | `string` | Display an exact backend-selected panorama. **Game rounds use this**, so the answer's coordinates are never sent to the browser before the guess. |
 | `position` | `{ lat: number; lng: number }` | Latitude and longitude in degrees used to search for nearby imagery. |
 
-Pass the optional `panoId` prop to display an exact backend-selected panorama.
 When `panoId` is absent, the component searches within 150 meters for the nearest official Google outdoor
 panorama. It supports looking around, zooming, and moving along available street
 links. Changing either coordinate starts a new lookup and recreates the viewer.
@@ -165,7 +167,7 @@ sizes keep the expanded map within the game area on smaller screens.
 
 The project already implements this composition in
 `src/features/singlePlayer/GameCanvas.tsx`. Its parent, `SinglePlayerPage.tsx`,
-provides the position, stores the guess, and reserves the top/bottom space.
+provides the panorama id, stores the guess, and reserves the top/bottom space.
 
 ## Loading libraries for a new component
 

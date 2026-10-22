@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.auth.deps import get_current_user
 from app.modules.location.service import Location, LocationError, generate_location
-from app.scoring import haversine_distance
+from app.scoring import haversine_distance, single_player_round_score
 
 router = APIRouter(prefix="/singleplayer", tags=["singleplayer"])
 
@@ -24,14 +24,23 @@ class Guess(BaseModel):
     lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
+class Point(BaseModel):
+    lat: float
+    lng: float
+
+
 class Result(BaseModel):
     distance_km: float
+    score: int
     guess: Guess
+    answer: Point  # Revealed only after the guess is scored.
 
 
 class RoundOut(BaseModel):
+    # Only the panorama id goes to the browser before the guess, so the answer
+    # isn't sitting in the API response. Street View needs nothing else.
     round_id: UUID
-    location: Location
+    pano_id: str
     result: Result | None = None
 
 
@@ -44,7 +53,7 @@ class Round:
     created_at: float = field(default_factory=monotonic)
 
     def output(self):
-        return RoundOut(round_id=self.id, location=self.location, result=self.result)
+        return RoundOut(round_id=self.id, pano_id=self.location.pano_id, result=self.result)
 
 
 # Development storage: one round per user, expires after two hours. Single worker only.
@@ -86,6 +95,11 @@ def submit_guess(round_id: UUID, body: Guess, user=Depends(get_current_user)):
             raise HTTPException(404, "Round not found or expired. Reload the page.")
         if current.result is None:
             location = current.location
-            distance = haversine_distance(location.lat, location.lng, body.lat, body.lng)
-            current.result = Result(distance_km=round(distance, 3), guess=body)
+            distance = round(haversine_distance(location.lat, location.lng, body.lat, body.lng), 3)
+            current.result = Result(
+                distance_km=distance,
+                score=single_player_round_score(distance),
+                guess=body,
+                answer=Point(lat=location.lat, lng=location.lng),
+            )
         return current.result
