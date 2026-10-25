@@ -5,6 +5,7 @@ from fastapi import FastAPI
 # Keep module endpoint handlers and business logic inside your own modules.
 from app.modules.auth.router import router as auth_router
 from app.modules.lobby.router import router as lobby_router
+from app.modules.connections.router import router as connection_router
 
 app = FastAPI(title="GeoGuessr Clone")
 
@@ -17,3 +18,4 @@ def health():
 
 
 app.include_router(lobby_router)
+app.include_router(connection_router)

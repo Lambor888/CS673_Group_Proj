@@ -13,6 +13,8 @@ function handleStatus(response: Response, endpointType: string){
             if (response.status === 409) throw new Error('This lobby is full.')
             throw new Error('Request failed. Please try again.')
         case 'lobbypage':
+            if (response.status === 403) throw new Error("Only the host can start the game")
+            if (response.status === 409) throw new Error("Not enough players")
             throw new Error('Request failed. Please try again.')
         
     }

@@ -17,10 +17,6 @@ function LobbyCreation(){
     const token: string = getToken()
     console.log(`token: ${token}`)
     const username = getUsername()
-    if (!token) { 
-        navigate('/login'); 
-        return 
-    }
 
     async function handleCreateLobby() {
         setLobbyError(null)

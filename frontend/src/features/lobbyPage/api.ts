@@ -26,3 +26,14 @@ export function getCurrentLobby(token: string, lobbyId: string){
         method:'GET'
         }, token)
 }
+
+export function openLobbySocket(token: string, lobbyId: string): WebSocket {
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+  return new WebSocket(
+    `${protocol}://${location.host}/api/ws/${lobbyId}?token=${encodeURIComponent(token)}`
+  )
+}
+
+export function startGame(token: string, lobbyId: string){
+    return request<void>(`/api/lobbies/${lobbyId}/start`, 'lobbypage', { method: 'POST' }, token)
+}
