@@ -10,12 +10,17 @@ from app.modules.auth.security import decode_access_token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
+def get_user_from_token(token: str, db: Session) -> User | None:
+    user_id = decode_access_token(token)
+    if user_id is None:
+        return None
+    return db.get(User, user_id)
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ) -> User:
-    """Add `user: User = Depends(get_current_user)` to any endpoint that needs login."""
-    user_id = decode_access_token(token)
-    user = db.get(User, user_id) if user_id is not None else None
+    user = get_user_from_token(token, db)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
