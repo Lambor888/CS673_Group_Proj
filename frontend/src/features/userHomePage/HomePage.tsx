@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { createLobby, joinLobby } from './api'
 import {getToken, getUsername} from '../userAuth/api'
 import './HomePage.css'
@@ -89,19 +89,26 @@ function JoinLobby(){
   )
 }
 
+export function HomePage() {
+  const navigate = useNavigate()
+  const token = getToken()
+  const username = getUsername()
+  if (!token) return <Navigate to="/authpage" replace />
 
-
-
-
-export function HomePage(){
-    return (
-        <>
-            <div className="home-page">
-                <Header />
-                <LobbyCreation />
-                <JoinLobby />
-            </div>
-        </>
-    )
-
+  return (
+    <main className="home-page">
+      <header className="home-page__header">
+        <nav className="home-page__menu" aria-label="Game modes">
+          <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
+        </nav>
+        <button type="button" className="home-page__player" aria-label={`Player info: ${username ?? 'Player'}`}>
+          <span>Player info</span>
+          <strong>{username ?? 'Player'}</strong>
+        </button>
+      </header>
+      
+      <LobbyCreation />
+      <JoinLobby />
+    </main>
+  )
 }

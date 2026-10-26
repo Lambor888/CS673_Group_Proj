@@ -7,6 +7,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
+    google_maps_api_key: str = ""
     # Local default: a SQLite file, nothing to install.
     # CI/deploy: set DATABASE_URL=postgresql+psycopg://user:pass@host/db
     database_url: str = f"sqlite:///{BACKEND_DIR / 'dev.db'}"

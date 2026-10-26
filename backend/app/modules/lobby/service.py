@@ -1,5 +1,5 @@
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from fastapi.encoders import jsonable_encoder
 from uuid import UUID
 import secrets
@@ -65,6 +65,7 @@ class Lobby(Entity):
         self.name = lobby_name
 
 class LobbyManager(Entity):
+    # Local, single-process storage; rooms disappear when the server restarts.
     def __init__(self):
         super().__init__()
         self.lobbies: dict[UUID, Lobby] = {}
@@ -193,6 +194,14 @@ class ConnectionManager(Entity):
 
 class LobbyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=20)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, name):
+        name = name.strip()
+        if not name:
+            raise ValueError("Lobby name cannot be blank")
+        return name
 
 class PlayerOut(BaseModel):
     id: int

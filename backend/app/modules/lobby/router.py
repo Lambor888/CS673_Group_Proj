@@ -1,3 +1,6 @@
+from threading import Lock
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.modules.lobby.service import LobbyManager, Player, LobbyOut, Lobby, LobbyCreate, PlayerOut, ConnectionManager
@@ -11,6 +14,8 @@ router = APIRouter(prefix="/lobbies", tags=["lobbies"])
 
 connection_manager = ConnectionManager()
 lobby_manager = LobbyManager()
+# Sync endpoints run in threads; keep each room update and response together.
+lobby_lock = Lock()
 active_players = set()
 
 
