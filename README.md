@@ -54,12 +54,19 @@ Use `python3` instead of `python` on macOS. The script also accepts an absolute 
 | Method | Path | Needs login? | What it does |
 |---|---|---|---|
 | GET | `/health` | no | Check the server is up |
-| POST | `/auth/register` | no | Create an account. JSON: `{"username": "...", "password": "..."}` |
-| POST | `/auth/login` | no | Log in with form fields `username`, `password`. Returns a token |
-| GET | `/auth/me` | yes | Returns the logged-in user |
+| POST | `/auth/register` | no | Create an account. JSON: `{"username": "...", "email": "...", "password": "..."}` |
+| POST | `/auth/login` | no | Log in with form fields `username` (or your email), `password`. Returns a token |
+| POST | `/auth/google` | no | Sign in or sign up with Google. JSON: `{"credential": "<ID token from the Google button>"}` |
+| GET | `/auth/me` | yes | Your account (username, email, sign-in methods) |
+| PATCH | `/auth/me` | yes | Change your username. JSON: `{"username": "..."}` |
+| POST | `/auth/password` | yes | Change your password (or set a first one on a Google-only account) |
+| POST | `/auth/google/link` | yes | Connect a Google account to your account |
+| GET | `/profile/stats` | yes | Your single player stats |
 
 - Usernames: 3–20 characters (letters, numbers, `_`), case-insensitive (`Bob` = `bob`)
-- Passwords: 8–128 characters, stored hashed (never in plain text)
+- Emails: required at sign-up, one account per email, case-insensitive
+- Passwords: 8–128 characters, stored hashed (never in plain text). Google-only accounts have none until they set one
+- Signing in with Google never takes over an existing account with the same email (emails aren't verified at sign-up). Log in with your password, then connect Google from your profile
 - Login tokens last 24 hours
 
 ## Setup (once)
@@ -125,6 +132,22 @@ cp frontend/.env.example frontend/.env.local
 **4. Restart:** press `Ctrl+C`, then run `python start-dev.py` again.
 
 ⚠ **Never commit or share these files publicly.** Git already ignores them. If you ever see `.env` or `.env.local` in `git status`, stop and ask.
+
+## Sign in with Google (optional)
+
+Everything else works without this; the Google button just doesn't show until you set it up. It needs one **OAuth client ID** (not an API key, and there's no secret to keep).
+
+**1. Get a client ID.** If a teammate already has one, ask them for it and skip to step 2. Otherwise, in the same Google Cloud project as the Maps key:
+1. Open **APIs & Services → OAuth consent screen** (Google may call it **Google Auth Platform**). Choose **External**, fill in the app name and your email, and save. While the app is in **Testing**, add each teammate's Gmail under **Test users**.
+2. Open **APIs & Services → Credentials → Create credentials → OAuth client ID**. Application type: **Web application**.
+3. Under **Authorized JavaScript origins** add `http://localhost:5173` and `http://localhost`. No redirect URIs are needed.
+4. Copy the **Client ID** (it ends in `.apps.googleusercontent.com`).
+
+**2. Paste it** into the same files as the Maps key, in both:
+- `backend/.env` → `GOOGLE_CLIENT_ID=your-client-id`
+- `frontend/.env.local` → `VITE_GOOGLE_CLIENT_ID=your-client-id`
+
+**3. Restart**, and open the app at `http://localhost:5173`. Google rejects `127.0.0.1` unless you add that origin as well.
 
 ## Run the backend
 
@@ -241,11 +264,17 @@ backend/
 │   ├── scoring.py       # existing distance calculation utility
 │   └── modules/
 │       ├── auth/
-│       │   ├── router.py    # /auth/register, /auth/login, /auth/me
+│       │   ├── router.py    # /auth/... (register, login, Google, account changes)
+│       │   ├── service.py   # account rules (login by email, Google accounts and linking)
+│       │   ├── google.py    # verifies Google sign-in tokens
 │       │   ├── models.py    # User database model
 │       │   ├── schemas.py   # authentication request/response models
 │       │   ├── security.py  # password hashing and JWT helpers
 │       │   └── deps.py      # get_current_user dependency
+│       ├── profile/
+│       │   ├── router.py    # /profile/stats
+│       │   ├── models.py    # RoundResult: one row per scored round
+│       │   └── service.py   # record_round (call it from any game mode) and stats
 │       └── lobby/
 │           ├── router.py    # existing /ws entry point and runtime state
 │           └── service.py   # existing player, lobby, and manager classes

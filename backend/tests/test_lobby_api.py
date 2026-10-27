@@ -14,7 +14,9 @@ def fresh_lobbies(monkeypatch):
 
 def login_user(client, username="alice"):
     credentials = {"username": username, "password": "password123"}
-    registered = client.post("/auth/register", json=credentials)
+    registered = client.post(
+        "/auth/register", json={**credentials, "email": f"{username}@example.com"}
+    )
     assert registered.status_code == 201
     logged_in = client.post("/auth/login", data=credentials)
     assert logged_in.status_code == 200

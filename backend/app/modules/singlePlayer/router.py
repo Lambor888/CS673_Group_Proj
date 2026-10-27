@@ -5,8 +5,11 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 
+from app.db import get_db
 from app.modules.auth.deps import get_current_user
+from app.modules.profile.service import record_round
 from app.modules.location.service import Location, LocationError, generate_location
 from app.scoring import haversine_distance, single_player_round_score
 
@@ -88,7 +91,8 @@ def start_round(body: StartRound, user=Depends(get_current_user)):
 
 
 @router.post("/round/{round_id}/guess", response_model=Result)
-def submit_guess(round_id: UUID, body: Guess, user=Depends(get_current_user)):
+def submit_guess(round_id: UUID, body: Guess, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    newly_scored = False
     with round_lock:
         current = rounds.get(user.id)
         if not current or current.id != round_id or monotonic() - current.created_at > 7200:
@@ -102,4 +106,8 @@ def submit_guess(round_id: UUID, body: Guess, user=Depends(get_current_user)):
                 guess=body,
                 answer=Point(lat=location.lat, lng=location.lng),
             )
-        return current.result
+            newly_scored = True
+        result = current.result
+    if newly_scored:  # a retried guess request doesn't count twice
+        record_round(db, user.id, "single", result.score, result.distance_km)
+    return result

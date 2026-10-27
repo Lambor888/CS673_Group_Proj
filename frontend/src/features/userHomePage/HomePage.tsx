@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { createLobby, joinLobby } from './api'
-import {getToken, getUsername} from '../userAuth/api'
+import {getToken, getUsername, isLoggedIn, logout} from '../userAuth/api'
 import './HomePage.css'
 
 function LobbyCreation(){
@@ -15,7 +15,9 @@ function LobbyCreation(){
         setLobbyError(null)
         setCreating(true)
         try {
-            const lobby = await createLobby(token, `${username}'s lobby`)
+            // Lobby names are capped at 20 characters and usernames can be 20 long.
+            const name = `${username}'s lobby`
+            const lobby = await createLobby(token, name.length <= 20 ? name : (username ?? 'Player').slice(0, 20))
             for (const [key, value] of Object.entries(lobby)){
                 console.log(`${key}: ${value}`)
             }
@@ -86,9 +88,14 @@ export function HomePage() {
   const navigate = useNavigate()
   // Set when a lobby sends you back here (lobby closed, removed after disconnecting, ...).
   const notice = (useLocation().state as { notice?: string } | null)?.notice
-  const token = getToken()
   const username = getUsername()
-  if (!token) return <Navigate to="/authpage" replace />
+  // Not getToken(): it throws when logged out, and this page should redirect instead.
+  if (!isLoggedIn()) return <Navigate to="/authpage" replace />
+
+  function handleLogout() {
+    logout()
+    navigate('/authpage', { replace: true })
+  }
 
   return (
     <main className="home-page">
@@ -96,10 +103,14 @@ export function HomePage() {
         <nav className="home-page__menu" aria-label="Game modes">
           <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
         </nav>
-        <button type="button" className="home-page__player" aria-label={`Player info: ${username ?? 'Player'}`}>
-          <span>Player info</span>
-          <strong>{username ?? 'Player'}</strong>
-        </button>
+        <div className="home-page__account">
+          <button type="button" className="home-page__player" aria-label={`Profile: ${username ?? 'Player'}`}
+            onClick={() => navigate('/profile')}>
+            <span>Player info</span>
+            <strong>{username ?? 'Player'}</strong>
+          </button>
+          <button type="button" onClick={handleLogout}>Log out</button>
+        </div>
       </header>
 
       {notice && <p className="home-page__notice" role="status">{notice}</p>}
