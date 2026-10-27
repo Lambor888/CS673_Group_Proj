@@ -28,19 +28,34 @@ def create_lobby(client, headers, name="Test lobby"):
     return response.json()
 
 
+def join(client, headers, lobby):
+    # Rooms are joined by their 6-character code, not by id.
+    return client.post(f"/lobbies/{lobby['code']}/join", headers=headers)
+
+
+def get(client, headers, lobby):
+    return client.get(f"/lobbies/{lobby['id']}", headers=headers)
+
+
+def leave(client, headers, lobby):
+    return client.post(f"/lobbies/{lobby['id']}/leave", headers=headers)
+
+
 def test_create_and_get_lobby(client):
     host_id, headers = login_user(client)
     lobby = create_lobby(client, headers, "  Friends  ")
     assert lobby == {
         "id": lobby["id"],
         "name": "Friends",
-        "player_ids": {str(host_id): {"id": host_id}},
+        "player_ids": {str(host_id): {"id": host_id, "name": "alice"}},
         "host_id": host_id,
         "num_players": 1,
         "max_players": 5,
         "flag": False,
+        "code": lobby["code"],
     }
-    response = client.get(f"/lobbies/{lobby['id']}", headers=headers)
+    assert len(lobby["code"]) == 6 and lobby["code"].isalnum() and lobby["code"].isupper()
+    response = get(client, headers, lobby)
     assert response.status_code == 200
     assert response.json() == lobby
 
@@ -57,67 +72,74 @@ def test_join_leave_and_repeat_requests(client):
     host_id, host = login_user(client)
     guest_id, guest = login_user(client, "guest")
     lobby = create_lobby(client, host)
-    path = f"/lobbies/{lobby['id']}"
 
-    joined = client.post(f"{path}/join", headers=guest)
+    joined = join(client, guest, lobby)
     assert joined.status_code == 200
     assert joined.json()["num_players"] == 2
     assert joined.json()["player_ids"] == {
-        str(host_id): {"id": host_id}, str(guest_id): {"id": guest_id},
+        str(host_id): {"id": host_id, "name": "alice"},
+        str(guest_id): {"id": guest_id, "name": "guest"},
     }
     assert joined.json()["host_id"] == host_id
-    repeated = client.post(f"{path}/join", headers=guest)
+    repeated = join(client, guest, lobby)
     assert repeated.status_code == 200
     assert repeated.json() == joined.json()
-    assert client.get(path, headers=guest).json() == joined.json()
+    assert get(client, guest, lobby).json() == joined.json()
 
     for _ in range(2):
-        left = client.post(f"{path}/leave", headers=guest)
+        left = leave(client, guest, lobby)
         assert left.status_code == 204
         assert left.content == b""
-    assert client.get(path, headers=host).json() == lobby
+    assert get(client, host, lobby).json() == lobby
 
 
 def test_full_lobby_rejects_sixth_player_but_allows_rejoin_and_freed_slot(client):
     users = [login_user(client, f"player{i}") for i in range(6)]
     _, host = users[0]
-    path = f"/lobbies/{create_lobby(client, host)['id']}"
+    lobby = create_lobby(client, host)
     for _, headers in users[1:5]:
-        assert client.post(f"{path}/join", headers=headers).status_code == 200
+        assert join(client, headers, lobby).status_code == 200
 
-    full = client.get(path, headers=host).json()
+    full = get(client, host, lobby).json()
     assert full["num_players"] == len(full["player_ids"]) == 5
-    rejected = client.post(f"{path}/join", headers=users[5][1])
+    rejected = join(client, users[5][1], lobby)
     assert rejected.status_code == 409
     assert rejected.json()["detail"] == "Lobby is full"
-    assert client.get(path, headers=host).json() == full
-    repeated = client.post(f"{path}/join", headers=users[1][1])
+    assert get(client, host, lobby).json() == full
+    repeated = join(client, users[1][1], lobby)
     assert repeated.status_code == 200
     assert repeated.json() == full
 
-    assert client.post(f"{path}/leave", headers=users[1][1]).status_code == 204
-    joined = client.post(f"{path}/join", headers=users[5][1])
+    assert leave(client, users[1][1], lobby).status_code == 204
+    joined = join(client, users[5][1], lobby)
     assert joined.status_code == 200
     assert joined.json()["num_players"] == 5
     assert str(users[1][0]) not in joined.json()["player_ids"]
     assert str(users[5][0]) in joined.json()["player_ids"]
 
 
-def test_host_leaving_passes_host_to_first_remaining_player(client):
+def test_host_leaving_closes_the_lobby(client):
+    # Current design (PR #8): the host leaving closes the room for everyone.
     _, host = login_user(client)
-    guest_id, guest = login_user(client, "guest")
-    last_id, last = login_user(client, "lastguest")
-    path = f"/lobbies/{create_lobby(client, host)['id']}"
-    assert client.post(f"{path}/join", headers=guest).status_code == 200
-    assert client.post(f"{path}/join", headers=last).status_code == 200
+    _, guest = login_user(client, "guest")
+    lobby = create_lobby(client, host)
+    assert join(client, guest, lobby).status_code == 200
 
-    assert client.post(f"{path}/leave", headers=host).status_code == 204
-    remaining = client.get(path, headers=guest).json()
-    assert remaining["host_id"] == guest_id
-    assert remaining["num_players"] == 2
-    assert client.post(f"{path}/leave", headers=guest).status_code == 204
-    remaining = client.get(path, headers=last).json()
-    assert remaining["host_id"] == last_id
+    assert leave(client, host, lobby).status_code == 204
+    assert get(client, guest, lobby).status_code == 404
+    assert join(client, guest, lobby).status_code == 404
+    # The guest isn't stuck in the closed room and can host a new one.
+    assert create_lobby(client, guest)["num_players"] == 1
+
+
+def test_guest_leaving_keeps_the_lobby(client):
+    host_id, host = login_user(client)
+    _, guest = login_user(client, "guest")
+    lobby = create_lobby(client, host)
+    assert join(client, guest, lobby).status_code == 200
+    assert leave(client, guest, lobby).status_code == 204
+    remaining = get(client, host, lobby).json()
+    assert remaining["host_id"] == host_id
     assert remaining["num_players"] == 1
 
 
@@ -125,41 +147,123 @@ def test_nonmember_leaving_does_not_change_lobby(client):
     _, host = login_user(client)
     _, stranger = login_user(client, "stranger")
     lobby = create_lobby(client, host)
-    path = f"/lobbies/{lobby['id']}"
-    assert client.post(f"{path}/leave", headers=stranger).status_code == 204
-    assert client.get(path, headers=host).json() == lobby
+    assert leave(client, stranger, lobby).status_code == 204
+    assert get(client, host, lobby).json() == lobby
 
 
-def test_last_player_leaving_deletes_only_that_lobby(client):
+def test_leave_only_leaves_the_named_lobby(client):
+    # Regression: /leave used to remove you from whatever room you were in,
+    # even when the URL named a different room.
+    _, host_a = login_user(client, "hosta")
+    _, host_b = login_user(client, "hostb")
+    guest_id, guest = login_user(client, "guest")
+    room_a = create_lobby(client, host_a, "A")
+    room_b = create_lobby(client, host_b, "B")
+    assert join(client, guest, room_a).status_code == 200
+
+    assert leave(client, guest, room_b).status_code == 204
+    assert str(guest_id) in get(client, host_a, room_a).json()["player_ids"]
+    assert get(client, host_b, room_b).json() == room_b
+
+
+def test_host_leaving_deletes_only_that_lobby(client):
+    _, first_host = login_user(client, "first")
+    _, second_host = login_user(client, "second")
+    first = create_lobby(client, first_host, "First")
+    second = create_lobby(client, second_host, "Second")
+    assert first["id"] != second["id"]
+
+    assert leave(client, first_host, first).status_code == 204
+    assert get(client, first_host, first).status_code == 404
+    assert leave(client, first_host, first).status_code == 404
+    assert join(client, first_host, first).status_code == 404
+    assert get(client, second_host, second).json() == second
+
+
+def test_creating_a_lobby_leaves_your_previous_one(client):
+    # Current design (PR #8): one room per player; hosting a new room closes your old one.
     _, host = login_user(client)
     first = create_lobby(client, host, "First")
     second = create_lobby(client, host, "Second")
-    assert first["id"] != second["id"]
-    path = f"/lobbies/{first['id']}"
-    assert client.post(f"{path}/leave", headers=host).status_code == 204
-    for method, suffix in [("GET", ""), ("POST", "/join"), ("POST", "/leave")]:
-        assert client.request(method, path + suffix, headers=host).status_code == 404
-    assert client.get(f"/lobbies/{second['id']}", headers=host).json() == second
+    assert get(client, host, first).status_code == 404
+    assert get(client, host, second).json() == second
 
 
-@pytest.mark.parametrize("method,suffix", [("GET", ""), ("POST", "/join"), ("POST", "/leave")])
+def test_host_rejoining_own_code_keeps_lobby(client):
+    # Regression: join used to run leave_flow first, so a host re-entering their own
+    # code deleted the room and got a 404.
+    _, host = login_user(client)
+    _, guest = login_user(client, "guest")
+    lobby = create_lobby(client, host)
+    assert join(client, guest, lobby).status_code == 200
+    before = get(client, host, lobby).json()
+
+    rejoined = join(client, host, lobby)
+    assert rejoined.status_code == 200
+    assert rejoined.json() == before
+    assert get(client, guest, lobby).json() == before
+
+
+def test_failed_join_does_not_leave_current_lobby(client):
+    # Regression: a bad code or a full room used to kick you out of your room first.
+    users = [login_user(client, f"player{i}") for i in range(5)]
+    guest_id, guest = login_user(client, "guest")
+    _, home_host = login_user(client, "homehost")
+    home = create_lobby(client, home_host, "Home")
+    assert join(client, guest, home).status_code == 200
+
+    full = create_lobby(client, users[0][1], "Full")
+    for _, headers in users[1:]:
+        assert join(client, headers, full).status_code == 200
+
+    missing = client.post("/lobbies/ZZZZZZ/join", headers=guest)
+    assert missing.status_code == 404
+    assert join(client, guest, full).status_code == 409
+    assert str(guest_id) in get(client, guest, home).json()["player_ids"]
+    assert get(client, guest, home).json()["num_players"] == 2
+
+
+def test_joining_another_lobby_leaves_the_previous_one(client):
+    _, host_a = login_user(client, "hosta")
+    _, host_b = login_user(client, "hostb")
+    guest_id, guest = login_user(client, "guest")
+    room_a = create_lobby(client, host_a, "A")
+    room_b = create_lobby(client, host_b, "B")
+    assert join(client, guest, room_a).status_code == 200
+
+    moved = join(client, guest, room_b)
+    assert moved.status_code == 200
+    assert str(guest_id) in moved.json()["player_ids"]
+    assert get(client, host_a, room_a).json() == room_a
+
+
+@pytest.mark.parametrize("method,suffix", [("GET", ""), ("POST", "/leave")])
 @pytest.mark.parametrize("lobby_id,expected", [(str(uuid4()), 404), ("invalid-id", 422)])
 def test_missing_and_invalid_lobby_ids(client, method, suffix, lobby_id, expected):
+    # Regression: unknown ids raised KeyError and malformed ids ValueError (both 500).
     _, headers = login_user(client)
     response = client.request(method, f"/lobbies/{lobby_id}{suffix}", headers=headers)
     assert response.status_code == expected
 
 
+@pytest.mark.parametrize("code", ["ZZZZZZ", "invalid-code"])
+def test_unknown_lobby_code(client, code):
+    _, host = login_user(client)
+    create_lobby(client, host)
+    _, headers = login_user(client, "guest")
+    assert client.post(f"/lobbies/{code}/join", headers=headers).status_code == 404
+
+
 @pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer invalid-token"}])
 @pytest.mark.parametrize("method,suffix", [
     ("POST", "/createLobby"), ("GET", "/{id}"),
-    ("POST", "/{id}/join"), ("POST", "/{id}/leave"),
+    ("POST", "/{code}/join"), ("POST", "/{id}/leave"),
 ])
 def test_lobby_endpoints_require_login(client, method, suffix, headers):
     _, host = login_user(client)
     lobby = create_lobby(client, host)
-    path = "/lobbies" + suffix.format(id=lobby["id"])
+    path = "/lobbies" + suffix.format(id=lobby["id"], code=lobby["code"])
     response = client.request(method, path, headers=headers, json={"name": "Not allowed"})
     assert response.status_code == 401
-    assert client.get(f"/lobbies/{lobby['id']}", headers=host).json() == lobby
+    assert get(client, host, lobby).json() == lobby
     assert len(lobby_router.lobby_manager.get_all_lobbies()) == 1

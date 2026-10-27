@@ -147,7 +147,6 @@ class ConnectionManager(Entity):
 
     async def send(self, player_id, message):
         conn = self.active_players.get(player_id)
-        print("{} : {}".format(conn.player_id, conn.lobby_id))
         if conn is None or conn.websocket is None:
             return
         ws = conn.websocket

@@ -34,8 +34,8 @@ def test_single_player_total_adds_rounds():
 # ---- lobby ----
 def test_new_lobby_points_matches_lobby_players():
     lobby = Lobby()
-    lobby.initialize_lobby(Player(7))
-    lobby.add_player(Player(9))
+    lobby.initialize_lobby(Player(7, "p7"))
+    lobby.add_player(Player(9, "p9"))
     assert new_lobby_points(lobby.players) == {7: STARTING_POINTS, 9: STARTING_POINTS}
 
 def test_closest_player_loses_nothing_and_others_lose_points():
