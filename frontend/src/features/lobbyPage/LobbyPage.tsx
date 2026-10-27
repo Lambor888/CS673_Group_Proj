@@ -1,9 +1,12 @@
 import { useParams } from 'react-router-dom'
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type {Lobby} from './api'
-import { leaveLobby, getCurrentLobby, openLobbySocket, startGame } from './api'
+import { leaveLobby, getCurrentLobby, startGame } from './api'
 import {getToken} from '../userAuth/api'
+import { useLobbySocket } from './useLobbySocket'
+import type { LobbySocketMessage } from './useLobbySocket'
+import { ConnectionBanner } from './ConnectionBanner'
 import './LobbyPage.css'
 
 function Header(){
@@ -12,7 +15,7 @@ function Header(){
     )
 }
 
-function LeaveLobbyButton(){
+function LeaveLobbyButton({ onLeaving }: { onLeaving: () => void }){
     const navigator = useNavigate()
     const { id } = useParams<{id: string}>()
     const [leaving, setLeaving] = useState(false)
@@ -20,6 +23,8 @@ function LeaveLobbyButton(){
     async function handleLeaving(){
         if (!id) return
         setLeaving(true)
+        // Drop the socket first so the server closing it after the leave isn't mistaken for a drop.
+        onLeaving()
         try {
             // Await it so a failure is caught here instead of becoming an unhandled rejection.
             await leaveLobby(getToken(), id)
@@ -90,9 +95,10 @@ interface ChatMessage {
     text: string
 }
 
-function MessageBox({ messages, wsRef }: {
+function MessageBox({ messages, send, connected }: {
     messages: ChatMessage[]
-    wsRef: React.RefObject<WebSocket | null>
+    send: (msg: LobbySocketMessage) => boolean
+    connected: boolean
 }) {
     const [text, setText] = useState('')
     const bottomRef = useRef<HTMLDivElement>(null)
@@ -104,10 +110,9 @@ function MessageBox({ messages, wsRef }: {
     function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault()
         const trimmed = text.trim()
-        const ws = wsRef.current
-        if (!trimmed || !ws || ws.readyState !== WebSocket.OPEN) return
-        ws.send(JSON.stringify({ type: 'chat', text: trimmed }))
-        setText('')
+        if (!trimmed) return
+        // Keep the draft if we're offline so it can be sent after reconnecting.
+        if (send({ type: 'chat', text: trimmed })) setText('')
     }
 
     return (
@@ -126,7 +131,7 @@ function MessageBox({ messages, wsRef }: {
                     maxLength={200}
                     autoComplete="off"
                 />
-                <button type="submit" disabled={!text.trim()}>Send</button>
+                <button type="submit" disabled={!text.trim() || !connected}>Send</button>
             </form>
         </div>
     )
@@ -140,7 +145,6 @@ export function LobbyPage(){
     const [lobby, setLobby] = useState<Lobby | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [messages, setMessages] = useState<ChatMessage[]>([])
-    const wsRef = useRef<WebSocket | null>(null)
 
     useEffect(() => {
         if (!id){
@@ -149,29 +153,19 @@ export function LobbyPage(){
         getCurrentLobby(getToken(), id).then(setLobby).catch(e => setError(e))
     }, [id])
 
-    useEffect(() => {
-        if (!id) return
-        const ws = openLobbySocket(getToken(), id)
-        wsRef.current = ws
-
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data)
-            if (msg.type === 'lobby_update') {
-                setLobby(msg.data)
-            } else if (msg.type === 'lobby_closed') {
-                navigator('/HomePage', { replace: true })
-            } else if (msg.type === 'game_started') {
-                navigator(`/game/${id}`)
-            } else if (msg.type === 'chat'){
-                setMessages(prevMessages => [...prevMessages, {user: msg.user, text: msg.text}].slice(-200))
-            }
-        }
-
-        return () => {
-            ws.close()
-            wsRef.current = null
+    // lobby_closed, being removed, and reconnecting after a drop are handled by the hook.
+    const handleMessage = useCallback((msg: LobbySocketMessage) => {
+        if (msg.type === 'lobby_update') {
+            setLobby(msg.data as Lobby)
+        } else if (msg.type === 'game_started') {
+            // Closing this page's socket is fine: the game page reconnects within the grace period.
+            navigator(`/game/${id}`)
+        } else if (msg.type === 'chat'){
+            const chat = { user: String(msg.user), text: String(msg.text) }
+            setMessages(prevMessages => [...prevMessages, chat].slice(-200))
         }
     }, [id, navigator])
+    const { status, send, stop } = useLobbySocket(id, handleMessage)
 
     if (error) return <p>{error}</p>
     if (!lobby) return <p>Loading...</p>
@@ -181,14 +175,15 @@ export function LobbyPage(){
     return(
         <>
             <Header />
+            <ConnectionBanner status={status} />
             <div className="lobby-page">
                 <h1>{lobby.name}</h1>
                 <p>{lobby.num_players} / {lobby.max_players} players</p>
                 <PlayerList lobby={lobby} />
-                <LeaveLobbyButton />
+                <LeaveLobbyButton onLeaving={stop} />
                 <StartGameButton lobby={lobby}/ >
                 <p>Lobby Code: {lobby.code}</p>
-                <MessageBox messages={messages} wsRef={wsRef}/>
+                <MessageBox messages={messages} send={send} connected={status === 'open'}/>
             </div>
     
         

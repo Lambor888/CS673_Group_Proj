@@ -18,6 +18,10 @@ lobby_manager = LobbyManager()
 lobby_lock = Lock()
 active_players = set()
 
+# How long a player whose socket dropped (refresh, lobby -> game page, network blip)
+# keeps their seat before being removed from the lobby.
+DISCONNECT_GRACE_SECONDS = 15.0
+
 
 def output_lobby(lobby):
     return LobbyOut(
@@ -38,6 +42,8 @@ def chat_message(lobby:Lobby, user_id: int) -> dict:
     return {"type": "chat", "user": "Server", "text": "{} left the lobby.".format(user_id) }
 
 async def leave_flow(player_id: int) -> None:
+    # Leaving on purpose (or joining/creating another room) supersedes any pending disconnect leave.
+    connection_manager.cancel_pending_leave(player_id)
     lobby_id: UUID = lobby_manager.lobby_of(player_id)
     if lobby_id is None:
         return
@@ -55,6 +61,17 @@ async def leave_flow(player_id: int) -> None:
         await connection_manager.leave(player_id)
         await connection_manager.broadcast(lobby_id, lobby_message(lobby))
         await connection_manager.broadcast(lobby_id, chat_message(lobby, curr_player.username))
+
+def schedule_disconnect_leave(player_id: int, lobby_id: UUID) -> None:
+    """A player's socket closed: remove them from `lobby_id` unless they reconnect within the grace period."""
+    async def leave_if_still_gone():
+        if player_id in connection_manager.active_players:
+            return  # back online
+        if lobby_manager.lobby_of(player_id) != lobby_id:
+            return  # already left, or moved to another room
+        await leave_flow(player_id)
+
+    connection_manager.schedule_leave(player_id, leave_if_still_gone, DISCONNECT_GRACE_SECONDS)
 
 #lobby id is a uuid
 @router.post("/createLobby", response_model=LobbyOut, status_code=201)

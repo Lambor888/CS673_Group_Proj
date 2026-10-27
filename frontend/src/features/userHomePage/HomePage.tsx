@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { createLobby, joinLobby } from './api'
 import {getToken, getUsername} from '../userAuth/api'
 import './HomePage.css'
@@ -84,6 +84,8 @@ function JoinLobby(){
 
 export function HomePage() {
   const navigate = useNavigate()
+  // Set when a lobby sends you back here (lobby closed, removed after disconnecting, ...).
+  const notice = (useLocation().state as { notice?: string } | null)?.notice
   const token = getToken()
   const username = getUsername()
   if (!token) return <Navigate to="/authpage" replace />
@@ -99,7 +101,8 @@ export function HomePage() {
           <strong>{username ?? 'Player'}</strong>
         </button>
       </header>
-      
+
+      {notice && <p className="home-page__notice" role="status">{notice}</p>}
       <LobbyCreation />
       <JoinLobby />
     </main>
