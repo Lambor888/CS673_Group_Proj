@@ -4,18 +4,11 @@ import { createLobby, joinLobby } from './api'
 import {getToken, getUsername} from '../userAuth/api'
 import './HomePage.css'
 
-function Header(){
-    return (
-        <header><h1>Create a Lobby</h1></header>
-    )
-}
-
 function LobbyCreation(){
     const navigate = useNavigate()
     const [creating, setCreating] = useState(false)
     const [lobbyError, setLobbyError] = useState<string | null>(null)
     const token: string = getToken()
-    console.log(`token: ${token}`)
     const username = getUsername()
 
     async function handleCreateLobby() {
