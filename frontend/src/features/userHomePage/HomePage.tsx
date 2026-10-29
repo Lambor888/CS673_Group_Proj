@@ -4,12 +4,6 @@ import { createLobby, joinLobby } from './api'
 import {getToken, getUsername} from '../userAuth/api'
 import './HomePage.css'
 
-function Header(){
-    return (
-        <header><h1>Create a Lobby</h1></header>
-    )
-}
-
 function LobbyCreation(){
     const navigate = useNavigate()
     const [creating, setCreating] = useState(false)
@@ -91,7 +85,7 @@ function JoinLobby(){
 
 export function HomePage() {
   const navigate = useNavigate()
-  const token = getToken()
+  const token = sessionStorage.getItem('token')
   const username = getUsername()
   if (!token) return <Navigate to="/authpage" replace />
 
@@ -101,7 +95,7 @@ export function HomePage() {
         <nav className="home-page__menu" aria-label="Game modes">
           <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
         </nav>
-        <button type="button" className="home-page__player" aria-label={`Player info: ${username ?? 'Player'}`}>
+        <button type="button" className="home-page__player" onClick={() => navigate('/userinfo')} aria-label={`Player info: ${username ?? 'Player'}`}>
           <span>Player info</span>
           <strong>{username ?? 'Player'}</strong>
         </button>

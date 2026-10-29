@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type {Lobby} from './api'
 import { leaveLobby, getCurrentLobby, openLobbySocket, startGame } from './api'
-import {getToken, getUsername} from '../userAuth/api'
+import {getToken} from '../userAuth/api'
 import './LobbyPage.css'
 
 function Header(){
@@ -37,12 +37,12 @@ function LeaveLobbyButton(){
     return (
         <>
             <button className="create-leave-button" onClick={handleLeaving}> Leave Lobby </button>
+            {error && <p className="error" role="alert">{error}</p>}
         </>
     )
 }
 
 function StartGameButton({ lobby }: { lobby: Lobby }) {
-    const navigator = useNavigate()
     const [error, setError] = useState<string | null>(null)
     const [starting, setStarting] = useState(false)
 

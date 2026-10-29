@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.modules.auth.deps import get_current_user
-from app.modules.auth.models import User
+from app.modules.auth.deps import get_current_user, oauth2_scheme
+from app.modules.auth.friend_router import router as friend_router
+from app.modules.auth.models import RevokedToken, User
 from app.modules.auth.schemas import Token, UserCreate, UserOut
-from app.modules.auth.security import DUMMY_HASH, create_access_token, hash_password, verify_password
+from app.modules.auth.security import DUMMY_HASH, create_access_token, hash_password, verify_password, token_digest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+router.include_router(friend_router)
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
@@ -51,3 +53,19 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 def me(user: User = Depends(get_current_user)):
     """The logged-in user. Copy this pattern for any endpoint that needs login."""
     return user
+
+
+@router.post("/logout", status_code=204)
+def logout(user: User = Depends(get_current_user), token: str = Depends(oauth2_scheme),
+           db: Session = Depends(get_db)):
+    """Revoke this login token. Other sessions remain signed in."""
+    digest = token_digest(token)
+    db.add(RevokedToken(token_hash=digest))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Concurrent logout requests may both pass authentication before revocation.
+        if db.get(RevokedToken, digest) is None:
+            raise
+    return Response(status_code=204)

@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -19,3 +22,17 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class FriendRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    recipient_id: int = Field(gt=0)
+
+
+class FriendRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    sender_id: int
+    recipient_id: int
+    status: Literal["pending", "accepted", "rejected", "removed"]
+    created_at: datetime

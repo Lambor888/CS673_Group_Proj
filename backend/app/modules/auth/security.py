@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+from uuid import uuid4
 
 import jwt
 from argon2 import PasswordHasher
@@ -34,11 +36,17 @@ DUMMY_HASH = hash_password("dummy-password")
 def create_access_token(user_id: int) -> str:
     now = datetime.now(timezone.utc)
     payload = {
+        "jti": str(uuid4()),  # Separate sessions even when logins happen in the same second.
         "sub": str(user_id),  # who the token belongs to
         "iat": now,           # issued at
         "exp": now + timedelta(minutes=settings.access_token_expire_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def token_digest(token: str) -> str:
+    """Identify a revoked token without storing the bearer credential."""
+    return sha256(token.encode("utf-8")).hexdigest()
 
 
 def decode_access_token(token: str) -> int | None:
