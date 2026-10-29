@@ -1,4 +1,4 @@
-"""HTTP endpoints for round-based games. All the actual rules live in service.py."""
+"""HTTP endpoints for round-based games. All the rules live in service.py, all the points in app/scoring.py."""
 from contextlib import contextmanager
 from threading import Lock
 from uuid import UUID
@@ -29,29 +29,41 @@ class NextRound(BaseModel):
     previous_round: int = Field(ge=1)
 
 
-class GuessOut(BaseModel):
+class Point(BaseModel):
     lat: float
     lng: float
-    distance_km: float
+
+
+class PlayerResultOut(BaseModel):
+    guessed: bool                      # False if the timer ran out first
+    lat: float | None
+    lng: float | None
+    distance_km: float | None
+    score: int | None = None           # single player: points earned this round
+    penalty: int | None = None         # lobby: points lost this round
 
 
 class RoundOut(BaseModel):
     number: int
-    total_rounds: int | None  # None for lobby games: they last until one player is left
-    multiplier: float
+    total_rounds: int | None           # None for lobby games: they last until one player is left
+    multiplier: float                  # lobby penalty multiplier for this round
     seconds_left: float
     finished: bool
-    location: Location
-    submitted: list[int]  # user ids that have guessed so far
-    results: dict[int, GuessOut | None] | None  # only filled once the round is finished; None = ran out of time
+    pano_id: str                       # the browser only gets this until the round is over
+    submitted: list[int]               # user ids that have guessed so far
+    answer: Point | None               # revealed once the round is finished
+    results: dict[int, PlayerResultOut] | None  # filled once the round is finished
 
 
 class GameOut(BaseModel):
-    mode: str
+    mode: str                          # "single" or "lobby"
     over: bool
     winner: int | None
     active_players: list[int]
     eliminated_players: list[int]
+    total_score: int | None = None     # single player: running total
+    round_scores: list[int] | None = None  # single player: points per finished round
+    points: dict[int, int] | None = None   # lobby: points left per player
     current_round: RoundOut
 
 
@@ -79,20 +91,29 @@ def to_player_guess(game_round: GameRound, body: Guess) -> PlayerGuess:
 
 
 def round_out(game_round: GameRound, total_rounds: int | None) -> RoundOut:
+    answer = None
     results = None
     if game_round.finished:
-        results = {
-            pid: (GuessOut(lat=g.lat, lng=g.lng, distance_km=g.distance_km) if g else None)
-            for pid, g in game_round.results().items()
-        }
+        answer = Point(lat=game_round.location.lat, lng=game_round.location.lng)
+        results = {}
+        for pid, g in game_round.results().items():
+            results[pid] = PlayerResultOut(
+                guessed=g is not None,
+                lat=g.lat if g else None,
+                lng=g.lng if g else None,
+                distance_km=g.distance_km if g else None,
+                score=game_round.scores.get(pid),
+                penalty=game_round.penalties.get(pid),
+            )
     return RoundOut(
         number=game_round.number,
         total_rounds=total_rounds,
         multiplier=game_round.multiplier,
         seconds_left=round(game_round.seconds_left(), 2),
         finished=game_round.finished,
-        location=game_round.location,
+        pano_id=game_round.location.pano_id,
         submitted=sorted(game_round.guesses),
+        answer=answer,
         results=results,
     )
 
@@ -107,6 +128,7 @@ def single_out(game: SinglePlayerGame) -> GameOut:
     return GameOut(
         mode="single", over=game.over, winner=None,
         active_players=[game.user_id], eliminated_players=[],
+        total_score=game.total_score, round_scores=game.round_scores,
         current_round=round_out(game.current, game.total_rounds),
     )
 
@@ -144,7 +166,7 @@ def single_guess(body: Guess, user=Depends(get_current_user)):
     with single_lock:
         game = find_single(user)
         with rule_errors():
-            game.current.submit(user.id, to_player_guess(game.current, body))
+            game.guess(user.id, to_player_guess(game.current, body))
         return single_out(game)
 
 
@@ -166,6 +188,7 @@ def lobby_out(game: LobbyGame) -> GameOut:
     return GameOut(
         mode="lobby", over=game.over, winner=game.winner,
         active_players=sorted(game.active), eliminated_players=sorted(game.eliminated),
+        points=dict(game.points),
         current_round=round_out(game.current, None),
     )
 
@@ -174,7 +197,7 @@ def find_lobby_game(lobby_id: UUID, user) -> LobbyGame:
     game = lobby_games.get(lobby_id)
     if game is None:
         raise HTTPException(404, "No game in progress in this lobby.")
-    if user.id not in game.active and user.id not in game.eliminated:
+    if user.id not in game.points:
         raise HTTPException(403, "You are not part of this game.")
     game.refresh()
     return game
@@ -184,7 +207,7 @@ def find_lobby_game(lobby_id: UUID, user) -> LobbyGame:
 def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
     """Host only. Everyone currently in the lobby plays; repeating the call returns the running game."""
     with lobby_lock, lobby_games_lock:
-        lobby = lobby_manager.get_lobby(lobby_id)
+        lobby = lobby_manager.lobbies.get(lobby_id)
         if lobby is None:
             raise HTTPException(404, "Lobby not found")
         if lobby.host_id != user.id:
@@ -202,7 +225,7 @@ def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
 
 @router.get("/lobby/{lobby_id}", response_model=GameOut)
 def get_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
-    """Poll this to see the timer, who has guessed, and when the round is over."""
+    """Poll this to see the timer, who has guessed, points, and when the round is over."""
     with lobby_games_lock:
         return lobby_out(find_lobby_game(lobby_id, user))
 

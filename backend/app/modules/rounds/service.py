@@ -1,14 +1,28 @@
 """Round logic for single-player and lobby games.
+
+Pure Python on purpose (no FastAPI, no database) so it is easy to unit test.
+This file decides WHEN a round starts and ends and WHO is still playing.
+All point maths lives in app/scoring.py; this file only calls it.
 """
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any, Callable
 
+from app.scoring import (
+    SINGLE_PLAYER_ROUNDS,
+    apply_penalties,
+    is_lobby_game_over,
+    lobby_round_penalties,
+    lobby_winner,
+    new_lobby_points,
+    players_alive,
+    round_multiplier,
+    single_player_round_score,
+    single_player_total,
+)
+
 # ---- Tunable settings -------------------------------------------------------
 ROUND_SECONDS = 60            # time a player has to guess each round
-SINGLE_PLAYER_ROUNDS = 5      # single-player games are exactly this long
-MULTIPLIER_START_ROUND = 4    # lobby: first round whose multiplier is above 1x
-MULTIPLIER_STEP = 0.5         # lobby: how much the multiplier grows each round after that
 MIN_LOBBY_PLAYERS = 2
 
 
@@ -16,32 +30,25 @@ class GameError(Exception):
     """A rule was broken (guess too late, next round too early, ...). The router turns it into HTTP 409."""
 
 
-def round_multiplier(round_number: int) -> float:
-    """Lobby damage multiplier. 1.0 for early rounds, then grows every round (4 -> 1.5, 5 -> 2.0, ...).
-
-    It never stops growing, which is what guarantees a lobby game eventually ends.
-    """
-    if round_number < MULTIPLIER_START_ROUND:
-        return 1.0
-    return 1.0 + MULTIPLIER_STEP * (round_number - MULTIPLIER_START_ROUND + 1)
-
-
 @dataclass
 class PlayerGuess:
     lat: float
     lng: float
-    distance_km: float
+    distance_km: float            # distance from the true location
 
 
 @dataclass
 class GameRound:
     number: int                    # 1-based
-    location: Any                  # a location.service.Location; this file never inspects it
+    location: Any                  # a location.service.Location (needs .lat .lng .pano_id)
     players: set[int]              # user ids expected to guess this round
     seconds: float = ROUND_SECONDS
     started_at: float = field(default_factory=lambda: monotonic())
     guesses: dict[int, PlayerGuess] = field(default_factory=dict)
     finished: bool = False
+    scored: bool = False           # set once the game has applied this round's points
+    scores: dict[int, int] = field(default_factory=dict)       # single player: points earned
+    penalties: dict[int, int] = field(default_factory=dict)    # lobby: points lost
 
     @property
     def multiplier(self) -> float:
@@ -52,6 +59,9 @@ class GameRound:
 
     def refresh(self) -> bool:
         """Close the round if everyone has guessed or the timer ran out.
+
+        Called lazily whenever someone asks for state or guesses, so no background timer thread is needed.
+        Returns True only on the call that closes the round.
         """
         if self.finished:
             return False
@@ -73,7 +83,7 @@ class GameRound:
         return guess
 
     def results(self) -> dict[int, PlayerGuess | None]:
-        """Per player: their guess, or None if they ran out of time. This is the scoring module's input."""
+        """Per player: their guess, or None if they ran out of time."""
         return {pid: self.guesses.get(pid) for pid in sorted(self.players)}
 
 
@@ -99,8 +109,33 @@ class SinglePlayerGame:
     def over(self) -> bool:
         return self.current.finished and self.current.number >= self.total_rounds
 
+    @property
+    def round_scores(self) -> list[int]:
+        """Points earned in each finished round, in order."""
+        return [r.scores.get(self.user_id, 0) for r in self.rounds if r.scored]
+
+    @property
+    def total_score(self) -> int:
+        return single_player_total(self.round_scores)
+
     def refresh(self) -> None:
         self.current.refresh()
+        self._settle()
+
+    def _settle(self) -> None:
+        """Once a round is closed, award its points (0 if the timer ran out)."""
+        current = self.current
+        if not current.finished or current.scored:
+            return
+        current.scored = True
+        guess = current.guesses.get(self.user_id)
+        current.scores = {self.user_id: single_player_round_score(guess.distance_km) if guess else 0}
+
+    def guess(self, user_id: int, guess: PlayerGuess) -> PlayerGuess:
+        self.refresh()
+        result = self.current.submit(user_id, guess)
+        self.refresh()
+        return result
 
     def start_next(self, previous_round: int, make_location: MakeLocation) -> GameRound:
         """Begin round `previous_round + 1`. Repeating the same request returns the round already created."""
@@ -129,48 +164,55 @@ class SinglePlayerGame:
 
 
 # ---- Lobby ------------------------------------------------------------------
-def no_elimination(game: "LobbyGame", finished_round: GameRound) -> set[int]:
-    """Default hook: nobody is ever eliminated (so a lobby game never ends).
-    """
-    return set()
-
-
-round_end_hook: Callable[["LobbyGame", GameRound], set[int]] = no_elimination
-
-
 @dataclass
 class LobbyGame:
     lobby_id: Any
-    active: set[int]
-    eliminated: set[int] = field(default_factory=set)
+    points: dict[int, int]         # player id -> points left; 0 means eliminated
     rounds: list[GameRound] = field(default_factory=list)
-    _handled_round: int = 0  # last round number whose end-of-round hook has run
+
+    @property
+    def active(self) -> set[int]:
+        return set(players_alive(self.points))
+
+    @property
+    def eliminated(self) -> set[int]:
+        return set(self.points) - self.active
+
+    @property
+    def over(self) -> bool:
+        return is_lobby_game_over(self.points)
+
+    @property
+    def winner(self) -> int | None:
+        return lobby_winner(self.points) if self.over else None
 
     @property
     def current(self) -> GameRound:
         return self.rounds[-1]
 
-    @property
-    def over(self) -> bool:
-        return len(self.active) <= 1
-
-    @property
-    def winner(self) -> int | None:
-        return next(iter(self.active)) if len(self.active) == 1 else None
-
     def refresh(self) -> None:
-        """Close the round if due and, exactly once per round, let scoring decide who is out."""
+        """Close the round if it is due and, exactly once per round, take points off the players."""
         self.current.refresh()
-        if self.current.finished and self._handled_round < self.current.number:
-            self._handled_round = self.current.number
-            self.eliminate(round_end_hook(self, self.current))
+        self._settle()
 
-    def eliminate(self, user_ids: set[int]) -> None:
-        user_ids = set(user_ids) & self.active
-        if user_ids == self.active:
-            raise ValueError("Cannot eliminate every remaining player.")
-        self.active -= user_ids
-        self.eliminated |= user_ids
+    def _settle(self) -> None:
+        current = self.current
+        if not current.finished or current.scored:
+            return
+        current.scored = True
+        guesses = {}
+        for pid in current.players:
+            guess = current.guesses.get(pid)
+            guesses[pid] = (guess.lat, guess.lng) if guess else None
+        penalties = lobby_round_penalties(guesses, current.location.lat, current.location.lng, current.number)
+        new_points = apply_penalties(self.points, penalties)
+        if not players_alive(new_points):
+            # Only possible when nobody guessed and the penalty would wipe out every
+            # player at once. There would be no winner, so the round does not count.
+            penalties = {pid: 0 for pid in penalties}
+        else:
+            self.points = new_points
+        current.penalties = penalties
 
     def guess(self, user_id: int, guess: PlayerGuess) -> PlayerGuess:
         self.refresh()
@@ -195,7 +237,7 @@ class LobbyGame:
 
     def _add_round(self, make_location: MakeLocation) -> GameRound:
         location = make_location(_previous_pano(self.rounds))
-        new_round = GameRound(number=len(self.rounds) + 1, location=location, players=set(self.active))
+        new_round = GameRound(number=len(self.rounds) + 1, location=location, players=self.active)
         self.rounds.append(new_round)
         return new_round
 
@@ -203,6 +245,6 @@ class LobbyGame:
     def start(cls, lobby_id: Any, player_ids: set[int], make_location: MakeLocation) -> "LobbyGame":
         if len(player_ids) < MIN_LOBBY_PLAYERS:
             raise GameError(f"At least {MIN_LOBBY_PLAYERS} players are needed to start.")
-        game = cls(lobby_id=lobby_id, active=set(player_ids))
+        game = cls(lobby_id=lobby_id, points=new_lobby_points(sorted(player_ids)))
         game._add_round(make_location)
         return game
