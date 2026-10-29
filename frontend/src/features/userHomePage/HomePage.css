@@ -67,6 +67,8 @@
   max-width: 50%;
 }
 .home-page__player span { font-size: 12px; color: #6b7280; }
+.home-page__account { display: flex; align-items: stretch; gap: 8px; max-width: 60%; }
+.home-page__account .home-page__player { max-width: none; }
 @media (max-width: 480px) {
   .home-page__header { padding: 16px; gap: 12px; }
   .home-page__header button { padding: 8px 10px; }
