@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from pydantic import BaseModel, Field, field_validator
 from fastapi.encoders import jsonable_encoder
@@ -113,20 +114,55 @@ class ConnectionManager(Entity):
         super().__init__()
         self.active_players: dict[int, PlayerConnection] = {}
         self.lobby_members: dict[UUID, set[int]] = {}
+        # Players whose socket dropped and who will be removed unless they come back in time.
+        self.pending_leaves: dict[int, asyncio.Task] = {}
 
     async def connect(self, player_id, lobby_id, websocket):
         await websocket.accept()
+        # Reconnected (refresh, page change, network blip): don't remove them after all.
+        self.cancel_pending_leave(player_id)
         old_connection = self.active_players.get(player_id)
         if old_connection is not None:
             self.discard_member(old_connection.lobby_id, player_id)
             self.active_players[player_id] = PlayerConnection(player_id, lobby_id, websocket)
-            await self.close_connection(old_connection.websocket)
+            # Replaced by a newer socket (e.g. a second tab); 4409 tells the old one not to reconnect.
+            await self.close_connection(old_connection.websocket, code=4409)
         else:
             self.active_players[player_id] = PlayerConnection(player_id, lobby_id, websocket)
 
         print("Num active players: {}".format(self.active_players))
         self.lobby_members.setdefault(lobby_id, set()).add(player_id)
         print("Lobby members: {}".format(self.lobby_members[lobby_id]))
+
+    def schedule_leave(self, player_id, callback, delay: float) -> asyncio.Task:
+        """Run `await callback()` after `delay` seconds unless cancelled first.
+
+        Cancelled by cancel_pending_leave (called when the player reconnects or leaves on purpose).
+        """
+        self.cancel_pending_leave(player_id)
+
+        async def run():
+            await asyncio.sleep(delay)
+            # Only the latest scheduled leave for this player may fire.
+            if self.pending_leaves.get(player_id) is not asyncio.current_task():
+                return
+            self.pending_leaves.pop(player_id, None)
+            try:
+                await callback()
+            except Exception:
+                traceback.print_exc()
+
+        task = asyncio.create_task(run())
+        self.pending_leaves[player_id] = task
+        return task
+
+    def cancel_pending_leave(self, player_id) -> bool:
+        task = self.pending_leaves.pop(player_id, None)
+        if task is None:
+            return False
+        if task is not asyncio.current_task():
+            task.cancel()
+        return True
 
     def disconnect(self, player_id, websocket=None) -> bool:
         conn = self.active_players.get(player_id)
@@ -147,7 +183,6 @@ class ConnectionManager(Entity):
 
     async def send(self, player_id, message):
         conn = self.active_players.get(player_id)
-        print("{} : {}".format(conn.player_id, conn.lobby_id))
         if conn is None or conn.websocket is None:
             return
         ws = conn.websocket

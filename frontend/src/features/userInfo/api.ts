@@ -45,4 +45,4 @@ export const addFriend = (token: string, recipientId: number) =>
 export const respondToRequest = (token: string, id: string, action: 'accept' | 'reject') =>
   request<FriendRequest>(token, `/friend-requests/${id}/${action}`, 'POST')
 export const removeFriend = (token: string, id: number) => request<void>(token, `/friends/${id}`, 'DELETE')
-export const logout = (token: string) => request<void>(token, '/logout', 'POST')
+export { logout } from '../userAuth/api'

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { createLobby, joinLobby } from './api'
-import {getToken, getUsername} from '../userAuth/api'
+import {getToken, getUsername, isLoggedIn, logout} from '../userAuth/api'
 import { usePendingFriendRequests } from '../userInfo/usePendingFriendRequests'
 import './HomePage.css'
 
@@ -10,14 +10,15 @@ function LobbyCreation(){
     const [creating, setCreating] = useState(false)
     const [lobbyError, setLobbyError] = useState<string | null>(null)
     const token: string = getToken()
-    console.log(`token: ${token}`)
     const username = getUsername()
 
     async function handleCreateLobby() {
         setLobbyError(null)
         setCreating(true)
         try {
-            const lobby = await createLobby(token, `${username}'s lobby`)
+            // Lobby names are capped at 20 characters and usernames can be 20 long.
+            const name = `${username}'s lobby`
+            const lobby = await createLobby(token, name.length <= 20 ? name : (username ?? 'Player').slice(0, 20))
             for (const [key, value] of Object.entries(lobby)){
                 console.log(`${key}: ${value}`)
             }
@@ -86,10 +87,27 @@ function JoinLobby(){
 
 export function HomePage() {
   const navigate = useNavigate()
-  const token = sessionStorage.getItem('token')
+  const pendingFriends = usePendingFriendRequests(sessionStorage.getItem('token'))
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
+  // Set when a lobby sends you back here (lobby closed, removed after disconnecting, ...).
+  const notice = (useLocation().state as { notice?: string } | null)?.notice
   const username = getUsername()
-  const pendingFriends = usePendingFriendRequests(token)
-  if (!token) return <Navigate to="/authpage" replace />
+  // Not getToken(): it throws when logged out, and this page should redirect instead.
+  if (!isLoggedIn()) return <Navigate to="/authpage" replace />
+
+  async function handleLogout() {
+    setLoggingOut(true)
+    setLogoutError('')
+    try {
+      await logout()
+      navigate('/authpage', { replace: true })
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : 'Unable to log out.')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   return (
     <main className="home-page">
@@ -97,15 +115,21 @@ export function HomePage() {
         <nav className="home-page__menu" aria-label="Game modes">
           <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
         </nav>
-        <button type="button" className="home-page__player" onClick={() => navigate('/userinfo')}
-          title={pendingFriends > 0 ? `${pendingFriends} pending friend requests` : 'Player info'}
-          aria-label={`Player info: ${username ?? 'Player'}${pendingFriends > 0 ? `, ${pendingFriends} pending friend requests` : ''}`}>
-          {pendingFriends > 0 && <span className="home-page__notification-dot" aria-hidden="true" />}
-          <span>Player info</span>
-          <strong>{username ?? 'Player'}</strong>
-        </button>
+        <div className="home-page__account">
+          <button type="button" className="home-page__player"
+            title={pendingFriends > 0 ? `${pendingFriends} pending friend requests` : 'Player info'}
+            aria-label={`Player info: ${username ?? 'Player'}${pendingFriends > 0 ? `, ${pendingFriends} pending friend requests` : ''}`}
+            onClick={() => navigate('/userinfo')}>
+            {pendingFriends > 0 && <span className="home-page__notification-dot" aria-hidden="true" />}
+            <span>Player info</span>
+            <strong>{username ?? 'Player'}</strong>
+          </button>
+          <button type="button" disabled={loggingOut} onClick={handleLogout}>Log out</button>
+        </div>
       </header>
-      
+
+      {notice && <p className="home-page__notice" role="status">{notice}</p>}
+      {logoutError && <p className="create-error" role="alert">{logoutError}</p>}
       <LobbyCreation />
       <JoinLobby />
     </main>

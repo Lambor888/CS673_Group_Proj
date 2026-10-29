@@ -1,52 +1,55 @@
-from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
-
-from app.modules.lobby.service import ConnectionManager, PlayerConnection, Player, LobbyOut, PlayerOut
-from app.modules.lobby.router import lobby_manager, connection_manager, leave_flow
-from app.modules.auth.deps import get_current_user, get_user_from_token
 import uuid
-from app.db import get_db
-from uuid import UUID
+
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from app.db import get_db
+from app.modules.auth.deps import get_user_from_token
+from app.modules.lobby import router as lobby_router
+from app.modules.lobby.service import Player
+
+# Read lobby_manager / connection_manager off the lobby router module at call time (not
+# `from ... import lobby_manager`), so this always sees the same objects the lobby
+# endpoints use, including when tests swap them out.
 
 router = APIRouter(prefix="/ws", tags=["ws"])
 
+# Close codes the frontend acts on (4000-4999 are free for applications).
+# A client must not reconnect after one of these; any other drop is retried.
+CLOSE_NOT_A_MEMBER = 4401  # bad token, unknown lobby, or no longer in it
 
-def output_lobby(lobby):
-    return LobbyOut(
-        id = lobby.get_id(),
-        name = lobby.name,
-        player_ids = {pid: PlayerOut(id=p.p_id, name=p.username) for pid, p in lobby.players.items()},
-        host_id = lobby.host_id,
-        num_players = lobby.num_players,
-        max_players = lobby.max_players,
-        flag = lobby.flag,
-        code = lobby.code
-    ) 
 
+async def reject(ws: WebSocket, code: int) -> None:
+    # Closing before accept() turns into an HTTP 403 and browsers only ever see code 1006,
+    # which looks like a network drop. Accept first so the client gets the real code.
+    await ws.accept()
+    await ws.close(code=code)
 
 
 @router.websocket("/{lobby_id}")
 async def lobby_ws(ws: WebSocket, lobby_id: str, token: str, db: Session = Depends(get_db)):
-    
-    print("ws endpoint hit")
     user = get_user_from_token(token, db)
-    if user is None:
-        await ws.close(code=4401)
-        return
-    
-    player = Player(user.id, user.username)
     db.close()
-    lobby_id = uuid.UUID(lobby_id)
-    lobby = lobby_manager.lobbies.get(lobby_id)
-    
-    if lobby is None or player.p_id not in lobby.players:
-        await ws.close(code=4401)
+    if user is None:
+        await reject(ws, CLOSE_NOT_A_MEMBER)
         return
 
-    await connection_manager.connect(player.p_id, lobby_id, ws)
-    lobby_out = output_lobby(lobby_manager.lobbies[lobby_id])
-    await connection_manager.send(player.p_id, {"type": "lobby_update", "data": lobby_out})
+    player = Player(user.id, user.username)
+    try:
+        room_id = uuid.UUID(lobby_id)
+    except ValueError:
+        await reject(ws, CLOSE_NOT_A_MEMBER)
+        return
+
+    lobby_manager = lobby_router.lobby_manager
+    connection_manager = lobby_router.connection_manager
+    lobby = lobby_manager.lobbies.get(room_id)
+    if lobby is None or player.p_id not in lobby.players:
+        await reject(ws, CLOSE_NOT_A_MEMBER)
+        return
+
+    await connection_manager.connect(player.p_id, room_id, ws)
+    await connection_manager.send(player.p_id, lobby_router.lobby_message(lobby))
 
     try:
         while True:
@@ -55,12 +58,14 @@ async def lobby_ws(ws: WebSocket, lobby_id: str, token: str, db: Session = Depen
                 text = str(msg.get("text", "")).strip()[:200]
                 if text:
                     await connection_manager.broadcast(
-                        lobby_id,
+                        room_id,
                         {"type": "chat", "user": player.username, "text": text},
                     )
     except WebSocketDisconnect:
         pass
     finally:
+        # A closed socket is not a leave: refreshing, going from the lobby to the game page,
+        # or a network blip all close it. Keep the seat for a grace period and only remove
+        # the player if they haven't reconnected by then. Explicit leaves use POST /leave.
         if connection_manager.disconnect(player.p_id, ws):
-            await leave_flow(player.p_id)
-    
+            lobby_router.schedule_disconnect_leave(player.p_id, room_id)

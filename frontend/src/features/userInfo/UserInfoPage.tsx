@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import type { User } from '../userAuth/api'
+import { getStats } from '../profilePage/api'
+import type { Stats } from '../profilePage/api'
 import { AccountError, addFriend, getFriends, getRequests, getUser, logout, removeFriend, respondToRequest } from './api'
 import type { FriendRequest } from './api'
 import './UserInfoPage.css'
@@ -18,6 +20,7 @@ export function UserInfoPage() {
 function AccountPage({ token }: { token: string }) {
   const navigate = useNavigate()
   const [user, setUser] = useState<User | null>(null)
+  const [stats, setStats] = useState<Stats | null>(null)
   const [friends, setFriends] = useState<User[]>([])
   const [incoming, setIncoming] = useState<FriendRequest[]>([])
   const [outgoing, setOutgoing] = useState<FriendRequest[]>([])
@@ -32,10 +35,11 @@ function AccountPage({ token }: { token: string }) {
 
   useEffect(() => {
     let active = true
-    Promise.all([getUser(token), getFriends(token), getRequests(token, 'incoming'), getRequests(token, 'outgoing')])
-      .then(([profile, list, received, sent]) => {
+    Promise.all([getUser(token), getFriends(token), getRequests(token, 'incoming'), getRequests(token, 'outgoing'), getStats()])
+      .then(([profile, list, received, sent, career]) => {
         if (!active) return
         setUser(profile)
+        setStats(career)
         setFriends(list)
         setIncoming(received)
         setOutgoing(sent)
@@ -124,13 +128,25 @@ function AccountPage({ token }: { token: string }) {
           {user ? <><p className="user-info__username">{user.username}</p><p className="user-info__muted">User ID: {user.id}</p></>
             : <p className="user-info__muted">{loading ? 'Loading account…' : 'Account unavailable'}</p>}
         </div>
-        <button type="button" disabled={busy} onClick={handleLogout}>Log out</button>
+        <div className="user-info__actions">
+          <button type="button" onClick={() => navigate('/profile')}>Account settings</button>
+          <button type="button" disabled={busy} onClick={handleLogout}>Log out</button>
+        </div>
       </header>
       {error && <div className="user-info__error" role="alert">{error} <button type="button" disabled={busy} onClick={() => setRevision(value => value + 1)}>Refresh</button></div>}
       {notice && <p className="user-info__notice" role="status">{notice}</p>}
       <div className="user-info__columns">
         <section className="user-info__career" aria-labelledby="career-heading">
           <h2 id="career-heading">Game career</h2>
+          {stats && (stats.rounds_played === 0 ? <p className="user-info__muted">No rounds played yet.</p> :
+            <dl className="user-info__stats">
+              <dt>Rounds played</dt><dd>{stats.rounds_played}</dd>
+              <dt>Total score</dt><dd>{stats.total_score.toLocaleString()}</dd>
+              <dt>Best score</dt><dd>{stats.best_score?.toLocaleString() ?? '—'}</dd>
+              <dt>Average score</dt><dd>{stats.average_score?.toLocaleString() ?? '—'}</dd>
+              <dt>Closest guess</dt><dd>{stats.best_distance_km == null ? '—' : `${stats.best_distance_km.toLocaleString()} km`}</dd>
+              <dt>Average distance</dt><dd>{stats.average_distance_km == null ? '—' : `${stats.average_distance_km.toLocaleString()} km`}</dd>
+            </dl>)}
         </section>
         <section className="user-info__friends" aria-labelledby="friends-heading" aria-busy={loading}>
           <h2 id="friends-heading">Friends</h2>

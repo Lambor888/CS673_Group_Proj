@@ -78,7 +78,15 @@
   background: #dc2626;
   border: 2px solid #fff;
 }
+.home-page__account { display: flex; align-items: stretch; gap: 8px; max-width: 60%; }
+.home-page__account .home-page__player { max-width: none; }
 @media (max-width: 480px) {
   .home-page__header { padding: 16px; gap: 12px; }
   .home-page__header button { padding: 8px 10px; }
+}
+
+.home-page__notice {
+  margin: 0 0 12px;
+  color: #92400e;
+  font-size: 0.95rem;
 }

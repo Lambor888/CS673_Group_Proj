@@ -6,7 +6,8 @@ from app.config import settings
 
 
 def register(client, username="alice", password="password123"):
-    client.post("/auth/register", json={"username": username, "password": password})
+    email = f"{username}@example.com"
+    client.post("/auth/register", json={"username": username, "email": email, "password": password})
 
 
 def login(client, username="alice", password="password123"):

@@ -6,13 +6,18 @@ import pytest
 
 from app.main import app
 from app.modules.auth.deps import get_current_user
+from app.modules.auth.models import User
 from app.modules.location import service
 from app.modules.singlePlayer import router as game
 from app.scoring import MAX_ROUND_SCORE, single_player_round_score
 
 
 @pytest.fixture(autouse=True)
-def reset_rounds():
+def reset_rounds(db_session):
+    # Scored rounds now persist a user FK, so auth doubles need real user rows.
+    db_session.add_all([User(id=1, username="player_one", password_hash="unused"),
+                        User(id=2, username="player_two", password_hash="unused")])
+    db_session.commit()
     game.rounds.clear()
     yield
     game.rounds.clear()
