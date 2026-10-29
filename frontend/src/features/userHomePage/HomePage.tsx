@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { createLobby, joinLobby } from './api'
 import {getToken, getUsername} from '../userAuth/api'
+import { usePendingFriendRequests } from '../userInfo/usePendingFriendRequests'
 import './HomePage.css'
 
 function LobbyCreation(){
@@ -87,6 +88,7 @@ export function HomePage() {
   const navigate = useNavigate()
   const token = sessionStorage.getItem('token')
   const username = getUsername()
+  const pendingFriends = usePendingFriendRequests(token)
   if (!token) return <Navigate to="/authpage" replace />
 
   return (
@@ -95,7 +97,10 @@ export function HomePage() {
         <nav className="home-page__menu" aria-label="Game modes">
           <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
         </nav>
-        <button type="button" className="home-page__player" onClick={() => navigate('/userinfo')} aria-label={`Player info: ${username ?? 'Player'}`}>
+        <button type="button" className="home-page__player" onClick={() => navigate('/userinfo')}
+          title={pendingFriends > 0 ? `${pendingFriends} pending friend requests` : 'Player info'}
+          aria-label={`Player info: ${username ?? 'Player'}${pendingFriends > 0 ? `, ${pendingFriends} pending friend requests` : ''}`}>
+          {pendingFriends > 0 && <span className="home-page__notification-dot" aria-hidden="true" />}
           <span>Player info</span>
           <strong>{username ?? 'Player'}</strong>
         </button>
