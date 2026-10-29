@@ -68,11 +68,9 @@ async def create_lobby(body: LobbyCreate, user: Annotated[User, Depends(get_curr
     return output_lobby(curr_lobby)
 
 @router.get("/{lobby_id}", response_model=LobbyOut)
-def get_lobby(lobby_id: str, user: Annotated[User, Depends(get_current_user)]):
-    print(lobby_manager.lobbies)
-    converted_string = uuid.UUID(lobby_id)
-    lobby = lobby_manager.lobbies[converted_string]
-    print("Lobby: {}".format(lobby.name))
+def get_lobby(lobby_id: UUID, user: Annotated[User, Depends(get_current_user)]):
+    # UUID path type: malformed ids get 422, unknown ids fall through to 404 below.
+    lobby = lobby_manager.lobbies.get(lobby_id)
     if lobby is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lobby not found")
     return output_lobby(lobby)
@@ -90,21 +88,26 @@ async def start_game(lobby_id: UUID, user: Annotated[User, Depends(get_current_u
 
 @router.post("/{lobby_code}/join", response_model=LobbyOut)
 async def join_lobby(lobby_code: str, user: Annotated[User, Depends(get_current_user)]):
-    await leave_flow(user.id)
-    lobbies = lobby_manager.get_all_lobbies()
-    curr_lobby = None
-    for lobby in lobbies:
-        if lobby.code == lobby_code:
-            curr_lobby = lobby
-            break
-    if curr_lobby is None:
+    # Find the target room before touching the player's current one, so a bad code,
+    # a full room, or re-joining the room you're already in never kicks you out
+    # (and a host re-joining their own code doesn't delete their room).
+    lobby = next(
+        (room for room in lobby_manager.get_all_lobbies() if room.code == lobby_code), None
+    )
+    if lobby is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lobby not found")
-    
+
     if user.id not in lobby.players:
         if lobby.is_full():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Lobby is full")
-        p = Player(user.id, user.username)
-        lobby.add_player(p)
+        # Only now leave whatever room the player was in before.
+        await leave_flow(user.id)
+        # leave_flow awaits websocket sends, so re-check the room survived and still has space.
+        if lobby_manager.lobbies.get(lobby.id) is not lobby:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lobby not found")
+        if lobby.is_full():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Lobby is full")
+        lobby.add_player(Player(user.id, user.username))
     out = output_lobby(lobby)
     await connection_manager.broadcast(
         lobby.id, {"type": "lobby_update", "data": out.model_dump(mode="json")}
@@ -112,7 +115,10 @@ async def join_lobby(lobby_code: str, user: Annotated[User, Depends(get_current_
     return out
 
 @router.post("/{lobby_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
-async def leave_lobby(lobby_id: str, user: Annotated[User, Depends(get_current_user)]):
-    if lobby_manager.lobbies.get(UUID(lobby_id)) is None:
+async def leave_lobby(lobby_id: UUID, user: Annotated[User, Depends(get_current_user)]):
+    lobby = lobby_manager.lobbies.get(lobby_id)
+    if lobby is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lobby not found")
-    await leave_flow(user.id)
+    # Leave *this* room only; a non-member (or a member of another room) is a no-op.
+    if user.id in lobby.players:
+        await leave_flow(user.id)

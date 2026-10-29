@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type {Lobby} from './api'
 import { leaveLobby, getCurrentLobby, openLobbySocket, startGame } from './api'
-import {getToken, getUsername} from '../userAuth/api'
+import {getToken} from '../userAuth/api'
 import './LobbyPage.css'
 
 function Header(){
@@ -15,34 +15,30 @@ function Header(){
 function LeaveLobbyButton(){
     const navigator = useNavigate()
     const { id } = useParams<{id: string}>()
-    const [error, setError] = useState<string | null>(null)
+    const [leaving, setLeaving] = useState(false)
 
-    useEffect(() => {
-        if (!id){
-            return
-        }
-    }, [id])
-    function handleLeaving(){
+    async function handleLeaving(){
         if (!id) return
+        setLeaving(true)
         try {
-            leaveLobby(getToken(), id)
-        
+            // Await it so a failure is caught here instead of becoming an unhandled rejection.
+            await leaveLobby(getToken(), id)
         } catch (e) {
-            setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.')
+            // Leaving is best-effort: if the room is already gone (404) or the request
+            // fails, the player should still end up back home rather than stuck here.
+            console.warn('Leaving the lobby failed:', e)
         }
         navigator(`/HomePage`)
-        
     }
 
     return (
         <>
-            <button className="create-leave-button" onClick={handleLeaving}> Leave Lobby </button>
+            <button className="create-leave-button" onClick={handleLeaving} disabled={leaving}> Leave Lobby </button>
         </>
     )
 }
 
 function StartGameButton({ lobby }: { lobby: Lobby }) {
-    const navigator = useNavigate()
     const [error, setError] = useState<string | null>(null)
     const [starting, setStarting] = useState(false)
 
@@ -76,7 +72,7 @@ function StartGameButton({ lobby }: { lobby: Lobby }) {
 }
 
 function PlayerList({ lobby}: { lobby: Lobby }){
-    let curr_players = Object.entries(lobby.player_ids) 
+    const curr_players = Object.entries(lobby.player_ids)
 
     return (
         <ul className="player-list">
