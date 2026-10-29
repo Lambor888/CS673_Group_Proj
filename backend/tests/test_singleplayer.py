@@ -6,12 +6,18 @@ import pytest
 
 from app.main import app
 from app.modules.auth.deps import get_current_user
+from app.modules.auth.models import User
 from app.modules.location import service
 from app.modules.singlePlayer import router as game
+from app.scoring import MAX_ROUND_SCORE, single_player_round_score
 
 
 @pytest.fixture(autouse=True)
-def reset_rounds():
+def reset_rounds(db_session):
+    # Scored rounds now persist a user FK, so auth doubles need real user rows.
+    db_session.add_all([User(id=1, username="player_one", password_hash="unused"),
+                        User(id=2, username="player_two", password_hash="unused")])
+    db_session.commit()
     game.rounds.clear()
     yield
     game.rounds.clear()
@@ -44,6 +50,8 @@ def test_round_guess_next_and_retries(client, monkeypatch):
     authenticate()
     result = client.post(path, json={'lat': 0, 'lng': 1}).json()
     assert result['distance_km'] == pytest.approx(111.195, abs=0.001)
+    assert result['score'] == single_player_round_score(result['distance_km'])
+    assert result['answer'] == {'lat': 0, 'lng': 0}
     assert client.post(path, json={'lat': 50, 'lng': 80}).json() == result
     assert client.post('/singleplayer/round', json={}).json()['result'] == result
     second = client.post('/singleplayer/round', json=next_body).json()
@@ -54,6 +62,46 @@ def test_round_guess_next_and_retries(client, monkeypatch):
     assert calls == [None, 'first']
 
 
+def test_answer_hidden_until_guess(client, monkeypatch):
+    """The browser must not receive the true coordinates before it guesses."""
+    authenticate()
+    paris = service.Location(pano_id='paris-pano', lat=48.8566, lng=2.3522)
+    monkeypatch.setattr(game, 'generate_location', lambda exclude=None: paris)
+
+    response = client.post('/singleplayer/round', json={})
+    body = response.json()
+    assert set(body) == {'round_id', 'pano_id', 'result'}
+    assert body['pano_id'] == 'paris-pano'
+    assert body['result'] is None
+    assert '48.8566' not in response.text and '2.3522' not in response.text
+
+    # Reloading the page before guessing must not leak it either.
+    reload = client.post('/singleplayer/round', json={})
+    assert '48.8566' not in reload.text and '2.3522' not in reload.text
+
+    # After the guess, the answer is revealed with the score.
+    path = f"/singleplayer/round/{body['round_id']}/guess"
+    result = client.post(path, json={'lat': 51.5074, 'lng': -0.1278}).json()
+    assert result['answer'] == {'lat': 48.8566, 'lng': 2.3522}
+    assert result['distance_km'] == pytest.approx(343.5, abs=1)
+    assert result['score'] == single_player_round_score(result['distance_km'])
+    assert 0 < result['score'] < MAX_ROUND_SCORE
+
+    # Reloading after the guess restores the result, answer included.
+    assert client.post('/singleplayer/round', json={}).json()['result'] == result
+
+
+def test_perfect_guess_scores_max(client, monkeypatch):
+    authenticate()
+    spot = service.Location(pano_id='spot', lat=35.6595, lng=139.7005)
+    monkeypatch.setattr(game, 'generate_location', lambda exclude=None: spot)
+    round_id = client.post('/singleplayer/round', json={}).json()['round_id']
+    result = client.post(f'/singleplayer/round/{round_id}/guess',
+                         json={'lat': 35.6595, 'lng': 139.7005}).json()
+    assert result['distance_km'] == 0
+    assert result['score'] == MAX_ROUND_SCORE
+
+
 def test_authentication_required(client):
     assert client.post('/singleplayer/round', json={}).status_code == 401
 
@@ -61,7 +109,9 @@ def test_authentication_required(client):
 def test_location_failure_preserves_completed_round(client, monkeypatch):
     authenticate()
     game.rounds[1] = game.Round(location=service.Location(pano_id='old', lat=0, lng=0),
-                                result=game.Result(distance_km=0, guess=game.Guess(lat=0, lng=0)))
+                                result=game.Result(distance_km=0, score=MAX_ROUND_SCORE,
+                                                   guess=game.Guess(lat=0, lng=0),
+                                                   answer=game.Point(lat=0, lng=0)))
     previous = game.rounds[1]
     def fail(_):
         raise service.LocationError('Google unavailable')

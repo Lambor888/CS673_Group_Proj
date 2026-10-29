@@ -1,7 +1,18 @@
-from sqlalchemy import create_engine
+from sqlite3 import Connection as SQLiteConnection
+
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
+
+
+@event.listens_for(Engine, "connect")
+def enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+    if isinstance(dbapi_connection, SQLiteConnection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 # SQLite-only: allow FastAPI's threadpool to share the connection.
 connect_args = (

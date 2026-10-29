@@ -1,6 +1,14 @@
+import asyncio
 import uuid
 from pydantic import BaseModel, Field, field_validator
+from fastapi.encoders import jsonable_encoder
 from uuid import UUID
+import secrets
+import string
+from fastapi import WebSocket
+from typing import Annotated
+import traceback
+from starlette.websockets import WebSocketState
 
 class Entity:
     def __init__(self):
@@ -13,84 +21,211 @@ class Entity:
         return self.id == ent.id
 
 class Player(Entity):
-    def __init__(self, p_id):
+    def __init__(self, p_id, name):
         super().__init__()
-        self.p_id = p_id
+        self.p_id: int = p_id
+        self.username: str = name
 
+class Lobby(Entity):
+    valid_characters = string.ascii_uppercase + string.digits
+    def __init__(self):
+        super().__init__()
+        self.name = "Lobby {}".format(self.get_id())
+        self.connections = {}
+        self.players: dict[int, Player] = {}
+        self.host_id: int | None = None
+        self.flag: bool = False
+        self.max_players: int = 5
+        self.code: str = self.generate_lobby_code(6)
 
-class ConnectionManager(Entity):
-    def __int__(self):
-        self.sockets = {}
+    @property
+    def num_players(self) -> int:
+        return len(self.players)
 
-    def register_player(self, player, websocket):  #Assume that player is an object
-        self.sockets[player.get_id] = websocket
+    def generate_lobby_code(self, length: int) -> str:
+        return ''.join(secrets.choice(Lobby.valid_characters) for _ in range(length))
 
-    def unregister_player(self, player): #Assume that player is an object
-        self.sockets.pop(player.get_id, None)
+    def initialize_lobby(self, host: Player) -> None:
+        self.host_id: int = host.p_id
+        self.players[self.host_id] = host
+    
+    def add_player(self, player: Player) -> None: 
+        if self.num_players < self.max_players:
+            p = player.p_id
+            self.players[p] = player
+        else:
+            raise Exception("Too many players")
+
+    def is_full(self) -> bool:
+        return self.num_players >= self.max_players
+
+    def remove_player(self, player_id: int) -> None:
+        return self.players.pop(player_id, None) is not None
+
+    def set_name(self, lobby_name: str) -> None:
+        self.name = lobby_name
 
 class LobbyManager(Entity):
     # Local, single-process storage; rooms disappear when the server restarts.
     def __init__(self):
         super().__init__()
-        self.lobbies = {}
+        self.lobbies: dict[UUID, Lobby] = {}
+        
 
-    def create_lobby(self, host):
+    def create_lobby(self, host: Player) -> Lobby:
         lobby = Lobby()
         lobby.initialize_lobby(host)
-        self.lobbies[lobby.get_id()] = lobby
+        self.lobbies[lobby.id] = lobby
         return lobby
 
-    def get_lobby(self, lobby_id):
-        return self.lobbies.get(lobby_id)
-
-    def get_all_lobbies(self):
+    def get_all_lobbies(self) -> list[Lobby]:
         self.destroy_lobbies()
         return list(self.lobbies.values())
 
-    def destroy_lobbies(self):
-        for lobby_id, lobby in list(self.lobbies.items()):
-            if lobby.flag:
-                self.lobbies.pop(lobby_id)
+    def destroy_lobbies(self) -> None:
+        for key, lobby in list(self.lobbies.items()):
+            if lobby.flag == True:
+                self.lobbies.pop(key, None)
 
+    def lobby_of(self, p_id: int) -> UUID | None:
+        lobby_lst: list[Lobby] = self.get_all_lobbies()
+        for lobby in lobby_lst:
+            if p_id in list(lobby.players.keys()):
+                return lobby.id
+        return None
 
-class Lobby(Entity):
+    def delete(self, lobby_id: UUID) -> None:
+        self.lobbies.pop(lobby_id, None)
+
+    def remove_player(self, lobby_id: UUID, player_id: int):
+        curr_lobby = self.lobbies.get(lobby_id)
+        if curr_lobby:
+            curr_lobby.remove_player(player_id)
+
+class PlayerConnection(Entity):
+    def __init__(self, player_id, lobby_id, websocket):
+        super().__init__()
+        self.player_id = player_id
+        self.lobby_id = lobby_id
+        self.websocket = websocket
+
+class ConnectionManager(Entity):
     def __init__(self):
         super().__init__()
-        self.name = "Lobby {}".format(self.get_id())
-        self.connections = {}
-        self.players = {}
-        self.host_id = None
-        self.flag = False
-        self.max_players = 5
+        self.active_players: dict[int, PlayerConnection] = {}
+        self.lobby_members: dict[UUID, set[int]] = {}
+        # Players whose socket dropped and who will be removed unless they come back in time.
+        self.pending_leaves: dict[int, asyncio.Task] = {}
 
-    @property
-    def num_players(self):
-        return len(self.players)
+    async def connect(self, player_id, lobby_id, websocket):
+        await websocket.accept()
+        # Reconnected (refresh, page change, network blip): don't remove them after all.
+        self.cancel_pending_leave(player_id)
+        old_connection = self.active_players.get(player_id)
+        if old_connection is not None:
+            self.discard_member(old_connection.lobby_id, player_id)
+            self.active_players[player_id] = PlayerConnection(player_id, lobby_id, websocket)
+            # Replaced by a newer socket (e.g. a second tab); 4409 tells the old one not to reconnect.
+            await self.close_connection(old_connection.websocket, code=4409)
+        else:
+            self.active_players[player_id] = PlayerConnection(player_id, lobby_id, websocket)
 
-    def initialize_lobby(self, host):
-        self.host_id = host.p_id
-        self.players[self.host_id] = host
+        print("Num active players: {}".format(self.active_players))
+        self.lobby_members.setdefault(lobby_id, set()).add(player_id)
+        print("Lobby members: {}".format(self.lobby_members[lobby_id]))
 
-    def add_player(self, player):
-        if player.p_id in self.players:
+    def schedule_leave(self, player_id, callback, delay: float) -> asyncio.Task:
+        """Run `await callback()` after `delay` seconds unless cancelled first.
+
+        Cancelled by cancel_pending_leave (called when the player reconnects or leaves on purpose).
+        """
+        self.cancel_pending_leave(player_id)
+
+        async def run():
+            await asyncio.sleep(delay)
+            # Only the latest scheduled leave for this player may fire.
+            if self.pending_leaves.get(player_id) is not asyncio.current_task():
+                return
+            self.pending_leaves.pop(player_id, None)
+            try:
+                await callback()
+            except Exception:
+                traceback.print_exc()
+
+        task = asyncio.create_task(run())
+        self.pending_leaves[player_id] = task
+        return task
+
+    def cancel_pending_leave(self, player_id) -> bool:
+        task = self.pending_leaves.pop(player_id, None)
+        if task is None:
+            return False
+        if task is not asyncio.current_task():
+            task.cancel()
+        return True
+
+    def disconnect(self, player_id, websocket=None) -> bool:
+        conn = self.active_players.get(player_id)
+        if conn is None:
+            return False
+        if websocket is not None and conn.websocket is not websocket:
+            return False
+        self.active_players.pop(player_id, None)
+        self.discard_member(conn.lobby_id, player_id)
+        return True
+
+    async def leave(self, player_id):
+        conn = self.active_players.get(player_id)
+        if conn is None:
             return
-        if self.is_full():
-            raise ValueError("Too many players")
-        self.players[player.p_id] = player
+        self.disconnect(player_id)
+        await self.close_connection(conn.websocket)
 
-    def is_full(self):
-        return self.num_players >= self.max_players
+    async def send(self, player_id, message):
+        conn = self.active_players.get(player_id)
+        if conn is None or conn.websocket is None:
+            return
+        ws = conn.websocket
+        if ws.client_state != WebSocketState.CONNECTED or ws.application_state != WebSocketState.CONNECTED:
+            self.disconnect(player_id, ws)
+            return
+        payload = jsonable_encoder(message)
 
-    def remove_player(self, player_id):
-        self.players.pop(player_id, None)
-        if player_id == self.host_id:
-            # Hand hosting to the first remaining player, or None if empty.
-            self.host_id = next(iter(self.players), None)
-        if not self.players:
-            self.flag = True
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            traceback.print_exc()
+            self.disconnect(player_id)
 
-    def set_name(self, lobby_name):
-        self.name = lobby_name
+    async def broadcast(self, lobby_id, message):
+        print("broadcast", lobby_id, self.lobby_members.get(lobby_id))
+        copy = list(self.lobby_members.get(lobby_id, []))
+        for player_id in copy:
+            await self.send(player_id, message)
+
+    async def close_lobby(self, lobby_id, message: dict) -> None:
+        copy = list(self.lobby_members.get(lobby_id, []))
+        print(copy)
+        for player_id in copy:
+            await self.send(player_id, message)
+            conn = self.active_players.pop(player_id, None)
+            if conn is not None:
+                await self.close_connection(conn.websocket)
+        self.lobby_members.pop(lobby_id, None)
+
+    def discard_member(self, lobby_id, player_id):
+        current_members = self.lobby_members.get(lobby_id)
+        if current_members is not None:
+            current_members.discard(player_id)
+            if not current_members:
+                self.lobby_members.pop(lobby_id, None)
+
+    async def close_connection(self, ws, code=1000):
+        #code 1000 in fastapi means a normal closure
+        try:
+            await ws.close(code=code)
+        except Exception:
+            pass
 
 class LobbyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=20)
@@ -105,6 +240,7 @@ class LobbyCreate(BaseModel):
 
 class PlayerOut(BaseModel):
     id: int
+    name: str
 
 class LobbyOut(BaseModel):
     id: UUID
@@ -114,4 +250,5 @@ class LobbyOut(BaseModel):
     num_players: int
     max_players: int
     flag: bool
+    code: str
 

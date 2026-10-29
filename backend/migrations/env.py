@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.modules.auth import models  # noqa: F401  (registers tables on Base.metadata)
+from app.modules.profile import models as profile_models  # noqa: F401
 from app.config import settings
 from app.db import Base
 
@@ -73,6 +74,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # SQLite batch migrations rebuild users. Disable FK cascades during the
+        # rebuild so dependent friend/profile rows survive, then validate them.
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
@@ -81,6 +88,11 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+            if sqlite and connection.exec_driver_sql("PRAGMA foreign_key_check").first():
+                raise RuntimeError("Migration left invalid foreign key references")
+        if sqlite:
+            connection.commit()
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 
 if context.is_offline_mode():

@@ -1,8 +1,11 @@
 from app.modules.auth.models import User
 
 
-def register(client, username="alice", password="password123"):
-    return client.post("/auth/register", json={"username": username, "password": password})
+def register(client, username="alice", password="password123", email=None):
+    email = email or f"{username}@example.com"
+    return client.post(
+        "/auth/register", json={"username": username, "email": email, "password": password}
+    )
 
 
 def test_register_creates_user(client):
@@ -40,6 +43,6 @@ def test_invalid_input_is_rejected(client):
 def test_unknown_fields_are_rejected(client):
     r = client.post(
         "/auth/register",
-        json={"username": "alice", "password": "password123", "is_admin": True},
+        json={"username": "alice", "email": "a@example.com", "password": "password123", "is_admin": True},
     )
     assert r.status_code == 422
