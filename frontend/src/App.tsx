@@ -6,6 +6,7 @@ import { SinglePlayerPage } from './features/singlePlayer/SinglePlayerPage'
 import { ProfilePage } from './features/profilePage/ProfilePage'
 import { UserInfoPage } from './features/userInfo/UserInfoPage'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { SinglePlayerRoundsPage } from './features/singlePlayer/SinglePlayerRoundsPage'
 export default function App() { 
     return (
     <BrowserRouter>
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/singleplayer" element={<SinglePlayerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/" element={<Navigate to="/authpage" />} />
+	<Route path="/" element={<SinglePlayeRoundsPage />} />
       </Routes>
     </BrowserRouter>
     );
