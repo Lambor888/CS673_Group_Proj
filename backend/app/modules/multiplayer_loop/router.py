@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.modules.auth.deps import get_current_user
 from app.modules.lobby import router as lobby_router
 from app.modules.lobby.router import lobby_lock, lobby_manager
-from app.modules.lobby.service import GameOut, Guess, NextRound, new_location, round_out, rule_errors, to_player_guess
+from app.modules.rounds.router import GameOut, Guess, NextRound, new_location, round_out, rule_errors, to_player_guess
 from app.modules.rounds.service import LobbyGame
 
 router = APIRouter(prefix="/games/lobby", tags=["multiplayer"])
