@@ -19,7 +19,7 @@ export default function App() {
         <Route path="/singleplayer" element={<SinglePlayerPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/" element={<Navigate to="/authpage" />} />
-	<Route path="/" element={<SinglePlayeRoundsPage />} />
+	<Route path="/" element={<SinglePlayerRoundsPage />} />
       </Routes>
     </BrowserRouter>
     );

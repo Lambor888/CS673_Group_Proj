@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.auth.deps import get_current_user
-from app.modules.lobby.router import lobby_lock, lobby_manager
+from app.modules.lobby import router as lobby_module
 from app.modules.location.service import Location, LocationError, generate_location
 from app.modules.rounds.service import (
     GameError, GameRound, LobbyGame, PlayerGuess, SinglePlayerGame,
@@ -206,8 +206,8 @@ def find_lobby_game(lobby_id: UUID, user) -> LobbyGame:
 @router.post("/lobby/{lobby_id}/start", response_model=GameOut)
 def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
     """Host only. Everyone currently in the lobby plays; repeating the call returns the running game."""
-    with lobby_lock, lobby_games_lock:
-        lobby = lobby_manager.lobbies.get(lobby_id)
+    with lobby_module.lobby_lock, lobby_games_lock:
+        lobby = lobby_module.lobby_manager.lobbies.get(lobby_id)
         if lobby is None:
             raise HTTPException(404, "Lobby not found")
         if lobby.host_id != user.id:
