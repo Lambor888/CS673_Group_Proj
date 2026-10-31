@@ -9,7 +9,7 @@ from app.modules.connections.router import router as connection_router
 from app.modules.singlePlayer.router import router as singleplayer_router
 from app.modules.profile.router import router as profile_router
 from app.modules.rounds.router import router as rounds_router
-from app.modules.multiPlayer.router import router as multiplayer_router
+from app.modules.multiplayer_loop.router import router as multiplayer_router
 app = FastAPI(title="GeoGuessr Clone")
 
 app.include_router(auth_router)
