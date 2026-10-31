@@ -1,5 +1,6 @@
 
 import { request } from '../requestHandler'
+import { startLobbyGame } from '../multiPlayerPage/api'
 
 export interface PlayerOut {
     id: number
@@ -34,6 +35,8 @@ export function openLobbySocket(token: string, lobbyId: string): WebSocket {
   )
 }
 
-export function startGame(token: string, lobbyId: string){
+export async function startGame(token: string, lobbyId: string){
+    // Create the shared panorama before notifying everyone to open the game page.
+    await startLobbyGame(token, lobbyId)
     return request<void>(`/api/lobbies/${lobbyId}/start`, 'lobbypage', { method: 'POST' }, token)
 }

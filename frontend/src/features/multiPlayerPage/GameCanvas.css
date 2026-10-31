@@ -1,0 +1,22 @@
+.multiplayer-canvas {
+  position: relative;
+  isolation: isolate;
+  container-type: size;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #202b36;
+}
+
+.multiplayer-canvas__guess-map {
+  position: absolute;
+  z-index: 2;
+  right: 16px;
+  bottom: 40px;
+}
+
+/* Keep the expanded map inside the canvas and above Street View attribution. */
+.multiplayer-canvas .guess-map { width: min(340px, calc(100cqw - 32px)); }
+.multiplayer-canvas .guess-map--expanded { width: min(640px, calc(100cqw - 32px)); }
+.multiplayer-canvas .guess-map__body { height: min(220px, calc(100cqh - 140px)); }
+.multiplayer-canvas .guess-map--expanded .guess-map__body { height: min(420px, calc(100cqh - 140px)); }
