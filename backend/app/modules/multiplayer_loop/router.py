@@ -11,14 +11,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.modules.auth.deps import get_current_user
 from app.modules.lobby import router as lobby_router
 from app.modules.lobby.router import lobby_lock, lobby_manager
-from app.modules.rounds.router import GameOut, Guess, NextRound, new_location, round_out, rule_errors, to_player_guess
+from app.modules.lobby.service import GameOut, Guess, NextRound, new_location, round_out, rule_errors, to_player_guess
 from app.modules.rounds.service import LobbyGame
 
 router = APIRouter(prefix="/games/lobby", tags=["multiplayer"])
 
-# Development storage: one game per lobby, in memory. Single worker only.
+#one game per lobby
 lobby_games: dict[UUID, LobbyGame] = {}
-lobby_games_lock = Lock()  # when both locks are needed, always take lobby_lock first
+lobby_games_lock = Lock()  #when both locks are needed, always take lobby_lock first
 
 
 def lobby_out(game: LobbyGame) -> GameOut:
