@@ -3,15 +3,22 @@ Same idea as modules/singlePlayer, but one game belongs to a whole lobby: everyo
 same location, the closest guess keeps its points, and the others lose points until one player is left.
 The rules live in rounds/service.py (LobbyGame), the points in app/scoring.py, the room itself in modules/lobby.
 """
+import traceback
 from threading import Lock
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.db import SessionLocal, get_db
 from app.modules.auth.deps import get_current_user
+from app.modules.auth.models import User
 from app.modules.lobby import router as lobby_router
 from app.modules.lobby.router import lobby_lock, lobby_manager
-from app.modules.lobby.service import GameOut, Guess, NextRound, new_location, round_out, rule_errors, to_player_guess
+from app.modules.profile.service import record_game
+from app.modules.rounds.router import (
+    FinalResultOut, GameOut, Guess, NextRound, new_location, round_out, rule_errors, to_player_guess,)
 from app.modules.rounds.service import LobbyGame
 
 router = APIRouter(prefix="/games/lobby", tags=["multiplayer"])
@@ -20,15 +27,39 @@ router = APIRouter(prefix="/games/lobby", tags=["multiplayer"])
 lobby_games: dict[UUID, LobbyGame] = {}
 lobby_games_lock = Lock()  #when both locks are needed, always take lobby_lock first
 
+def open_session() -> Session:
+    return SessionLocal()
 
-def lobby_out(game: LobbyGame) -> GameOut:
+def lobby_out(game: LobbyGame, db: Session) -> GameOut:
+    final = None
+    if game.over:
+        names = {u.id: u.username for u in db.scalars(select(User).where(User.id.in_(list(game.points))))}
+        final = [FinalResultOut(player_id=pid, username=names.get(pid, f"Player {pid}"), rank=rank, final_score=pts)
+                 for pid, rank, pts in game.standings()]
     return GameOut(
         mode="lobby", over=game.over, winner=game.winner,
         active_players=sorted(game.active), eliminated_players=sorted(game.eliminated),
-        points=dict(game.points),
+        points=dict(game.points), final_results=final,
         current_round=round_out(game.current, None),
     )
 
+
+def save_history_once(game: LobbyGame, db: Session) -> None:
+    if not game.over or game.history_saved:
+        return
+    game.history_saved = True
+    for player_id, rank, final_points in game.standings():
+        try:
+            record_game(db, player_id, "lobby", final_points, rounds_played=len(game.rounds),
+                        players=len(game.points), placement=rank, won=(player_id == game.winner))
+        except Exception:
+            db.rollback()
+            traceback.print_exc()
+
+
+def lobby_state(game: LobbyGame, db: Session) -> GameOut:
+    save_history_once(game, db)     
+    return lobby_out(game, db)
 
 def find_lobby_game(lobby_id: UUID, user) -> LobbyGame:
     game = lobby_games.get(lobby_id)
@@ -42,7 +73,6 @@ def find_lobby_game(lobby_id: UUID, user) -> LobbyGame:
 
 @router.post("/{lobby_id}/start", response_model=GameOut)
 def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
-    """Host only. Everyone currently in the lobby plays; repeating the call returns the running game."""
     with lobby_lock, lobby_games_lock:
         lobby = lobby_manager.lobbies.get(lobby_id)
         if lobby is None:
@@ -52,8 +82,9 @@ def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
         existing = lobby_games.get(lobby_id)
         if existing is not None:
             existing.refresh()
+            save_history_once(existing, db)
             if not existing.over:
-                return lobby_out(existing)
+                return lobby_state(existing, db)
         with rule_errors():
             game = LobbyGame.start(lobby_id, set(lobby.players), new_location)
         lobby_games[lobby_id] = game
@@ -61,10 +92,9 @@ def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
 
 
 @router.get("/{lobby_id}", response_model=GameOut)
-def get_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
-    """Poll this to see the timer, who has guessed, points, and when the round is over."""
+def get_lobby_game(lobby_id: UUID, user=Depends(get_current_user), db : Session = Depends(get_db)):
     with lobby_games_lock:
-        return lobby_out(find_lobby_game(lobby_id, user))
+        return lobby_state(find_lobby_game(lobby_id, user), db)
 
 
 @router.post("/{lobby_id}/guess", response_model=GameOut)
@@ -73,7 +103,7 @@ def lobby_guess(lobby_id: UUID, body: Guess, user=Depends(get_current_user)):
         game = find_lobby_game(lobby_id, user)
         with rule_errors():
             game.guess(user.id, to_player_guess(game.current, body))
-        return lobby_out(game)
+        return lobby_state(game, db)
 
 
 @router.post("/{lobby_id}/next", response_model=GameOut)
@@ -83,18 +113,25 @@ def lobby_next_round(lobby_id: UUID, body: NextRound, user=Depends(get_current_u
         game = find_lobby_game(lobby_id, user)
         with rule_errors():
             game.start_next(body.previous_round, new_location)
-        return lobby_out(game)
+        return lobby_out(game, db)
 
 
 def drop_player_from_game(lobby_id: UUID, player_id: int, lobby_closed: bool) -> None:
     """Keeps the game in step with the lobby. Registered with the lobby router below."""
     with lobby_games_lock:
         if lobby_closed:
-            lobby_games.pop(lobby_id, None)   # the host left, so the room and its game are gone
+            lobby_games.pop(lobby_id, None) 
             return
         game = lobby_games.get(lobby_id)
-        if game is not None:
-            game.remove_player(player_id)
+        if game is None:
+            return
+        game.remove_player(player_id)
+        if game.over and not game.history_saved:
+            db = open_session()
+            try:
+                save_history_once(game, db)
+            finally:
+                db.close()
 
 
 lobby_router.player_left_hooks.append(drop_player_from_game)
