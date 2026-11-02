@@ -57,6 +57,13 @@ class RoundOut(BaseModel):
     results: dict[int, PlayerResultOut] | None  # filled once the round is finished
 
 
+class FinalResultOut(BaseModel):
+    player_id: int
+    username: str
+    rank: int
+    final_score: int
+
+
 class GameOut(BaseModel):
     mode: str                          # "single" or "lobby"
     over: bool

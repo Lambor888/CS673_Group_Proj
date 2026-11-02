@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.modules.auth.deps import get_current_user
 from app.modules.auth.models import User
-from app.modules.profile.service import Stats, stats_for
+from app.modules.profile.service import HistoryEntry, Stats, history_for, stats_for
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
