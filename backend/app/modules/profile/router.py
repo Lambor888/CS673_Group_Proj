@@ -12,3 +12,8 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 @router.get("/stats", response_model=Stats)
 def my_stats(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return stats_for(db, user.id)
+
+@router.get("/history", response_model=list[HistoryEntry])
+def my_history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Finished games, newest first (single player and multiplayer)."""
+    return history_for(db, user.id)
