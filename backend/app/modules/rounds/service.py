@@ -23,6 +23,7 @@ from app.scoring import (
 
 # ---- Tunable settings -------------------------------------------------------
 ROUND_SECONDS = 60            # time a player has to guess each round
+LAST_GUESS_SECONDS = 10       # once someone has guessed, the others have at most this long
 MIN_LOBBY_PLAYERS = 2
 
 
@@ -79,6 +80,7 @@ class GameRound:
         if player_id not in self.players:
             raise GameError("You are not playing in this round.")
         self.guesses[player_id] = guess
+        self.seconds = min(self.seconds, monotonic() - self.started_at + LAST_GUESS_SECONDS)
         self.refresh()  # the last guess closes the round immediately
         return guess
 
