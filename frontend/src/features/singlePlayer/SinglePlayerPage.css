@@ -9,6 +9,8 @@
 
 .single-player-page__top,
 .single-player-page__bottom { min-width: 0; }
+.single-player-page__top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; }
+.single-player-page__round { margin-left: 16px; width: 124px; max-width: calc(100% - 20px); box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
 
 @media (max-width: 600px) {
   .single-player-page { --top-space: 56px; }

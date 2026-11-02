@@ -5,7 +5,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 
+from app.db import get_db
 from app.modules.auth.deps import get_current_user
 from app.modules.lobby import router as lobby_module
 from app.modules.location.service import Location, LocationError, generate_location

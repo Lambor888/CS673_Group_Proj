@@ -1,3 +1,5 @@
+import traceback
+from typing import Callable
 from threading import Lock
 from uuid import UUID
 
@@ -17,6 +19,15 @@ lobby_manager = LobbyManager()
 # Sync endpoints run in threads; keep each room update and response together.
 lobby_lock = Lock()
 active_players = set()
+
+player_left_hooks: list[Callable[[UUID, int, bool], None]] = []
+
+def notify_player_left(lobby_id: UUID, player_id: int, lobby_closed: bool) -> None:
+    for hook in player_left_hooks:
+        try:
+            hook(lobby_id, player_id, lobby_closed)
+        except Exception:
+            traceback.print_exc()
 
 # How long a player whose socket dropped (refresh, lobby -> game page, network blip)
 # keeps their seat before being removed from the lobby.
