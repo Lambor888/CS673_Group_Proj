@@ -1,8 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from datetime import datetime
-from pydantic import ConfigDict
 from app.modules.profile.models import RoundResult, GameHistory
 
 
