@@ -90,8 +90,8 @@ class GameRound:
 MakeLocation = Callable[[Any], Any]  # takes the previous pano_id (or None), returns a new Location
 
 
-def _previous_pano(rounds: list[GameRound]) -> str | None:
-    return getattr(rounds[-1].location, "pano_id", None) if rounds else None
+def _used_panos(rounds: list[GameRound]) -> set[str]:
+    return {getattr(r.location, "pano_id", None) for r in rounds}
 
 
 # ---- Single player ----------------------------------------------------------
@@ -151,7 +151,7 @@ class SinglePlayerGame:
         return self._add_round(make_location)
 
     def _add_round(self, make_location: MakeLocation) -> GameRound:
-        location = make_location(_previous_pano(self.rounds))
+        location = make_location(_used_panos(self.rounds))
         new_round = GameRound(number=len(self.rounds) + 1, location=location, players={self.user_id})
         self.rounds.append(new_round)
         return new_round
@@ -236,7 +236,7 @@ class LobbyGame:
         return self._add_round(make_location)
 
     def _add_round(self, make_location: MakeLocation) -> GameRound:
-        location = make_location(_previous_pano(self.rounds))
+        location = make_location(_used_panos(self.rounds))
         new_round = GameRound(number=len(self.rounds) + 1, location=location, players=self.active)
         self.rounds.append(new_round)
         return new_round

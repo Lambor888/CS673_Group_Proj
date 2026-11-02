@@ -77,9 +77,9 @@ class GameOut(BaseModel):
 
 
 # ---- Helpers ----------------------------------------------------------------
-def new_location(previous_pano: str | None) -> Location:
+def new_location(used_panos: set[str]) -> Location:
     try:
-        return generate_location(previous_pano)
+        return generate_location(used_panos)
     except LocationError as exc:
         raise HTTPException(503, str(exc)) from None
 

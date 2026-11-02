@@ -82,7 +82,7 @@ def start_round(body: StartRound, user=Depends(get_current_user)):
             if current.result is None:
                 raise HTTPException(409, "Submit your guess before starting the next round.")
         try:
-            location = generate_location(current.location.pano_id if current else None)
+            location = generate_location({current.location.pano_id} if current else set())
         except LocationError as exc:
             raise HTTPException(503, str(exc)) from None
         new_round = Round(location=location, previous_id=body.previous_round_id)
