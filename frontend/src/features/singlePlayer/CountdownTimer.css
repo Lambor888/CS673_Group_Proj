@@ -1,0 +1,21 @@
+.countdown {
+  min-width: 5ch;
+  padding: 4px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.countdown--idle { opacity: 0.6; }
+.countdown--warn { background: #b42318; animation: countdown-pulse 1s ease-in-out infinite; }
+.countdown--done { background: #7a1a12; }
+
+@keyframes countdown-pulse { 50% { opacity: 0.65; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown--warn { animation: none; }
+}

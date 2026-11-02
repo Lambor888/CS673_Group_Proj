@@ -1,0 +1,22 @@
+/* Layout comes from SinglePlayerPage.css; this file only adds the round/timer bar and the summary line. */
+.rounds-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  background: #0f172a;
+  color: #fff;
+}
+
+.rounds-hud__round,
+.rounds-hud__score { min-width: 90px; font-weight: 600; }
+.rounds-hud__score { text-align: right; }
+
+@media (max-width: 600px) {
+  .rounds-hud { gap: 8px; padding: 0 10px; font-size: 0.9rem; }
+  .rounds-hud__round,
+  .rounds-hud__score { min-width: 0; }
+}
+
+.rounds-summary { margin: 10px 0 0; text-align: center; font-weight: 600; }
