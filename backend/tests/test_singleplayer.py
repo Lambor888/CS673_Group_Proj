@@ -59,7 +59,7 @@ def test_round_guess_next_and_retries(client, monkeypatch):
     assert second['result'] is None
     assert client.post('/singleplayer/round', json=next_body).json() == second
     assert client.post(path, json={'lat': 0, 'lng': 1}).status_code == 404
-    assert calls == [None, 'first']
+    assert calls == [set(), {'first'}]
 
 
 def test_answer_hidden_until_guess(client, monkeypatch):
@@ -148,8 +148,8 @@ def test_location_retry_limit_and_exclusion(monkeypatch):
         return service.Location(pano_id='same', lat=lat, lng=lng)
     monkeypatch.setattr(service, 'lookup_location', lookup)
     with pytest.raises(service.LocationError, match='No new'):
-        service.generate_location('same')
-    assert len(calls) == 4
+        service.generate_location({'same'})
+    assert len(calls) == len(service.LOCATIONS)
 
 
 def test_missing_server_key(monkeypatch):

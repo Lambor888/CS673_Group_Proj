@@ -1,6 +1,7 @@
 import json
 import random
 import re
+from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -20,13 +21,8 @@ class Location(BaseModel):
     lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
-# Initial coverage-focused seed pool, not a uniform worldwide sampler.
-SEEDS = [
-    (40.7580, -73.9855), (51.5074, -0.1278), (48.8566, 2.3522),
-    (35.6595, 139.7005), (-33.8688, 151.2093), (43.6532, -79.3832),
-    (52.3702, 4.8952), (41.3851, 2.1734), (37.7749, -122.4194),
-    (-37.8136, 144.9631), (1.2903, 103.8519), (59.3293, 18.0686),
-]
+# Pre-loaded dataset: one spot per line in locations.json, each on official Google Street View.
+LOCATIONS = json.loads((Path(__file__).parent / "locations.json").read_text(encoding="utf-8"))
 
 
 def lookup_location(lat: float, lng: float) -> Location | None:
@@ -64,9 +60,10 @@ def lookup_location(lat: float, lng: float) -> Location | None:
         raise LocationError("Google returned invalid street-view metadata.") from None
 
 
-def generate_location(exclude_pano: str | None = None) -> Location:
-    for lat, lng in random.sample(SEEDS, 4):
-        location = lookup_location(lat + random.uniform(-0.003, 0.003), lng + random.uniform(-0.003, 0.003))
-        if location is not None and location.pano_id != exclude_pano:
+def generate_location(used_panos=()) -> Location:
+    """Pick a random spot from locations.json that this game has not shown yet."""
+    for spot in random.sample(LOCATIONS, len(LOCATIONS)):
+        location = lookup_location(spot["lat"], spot["lng"])
+        if location is not None and location.pano_id not in used_panos:
             return location
     raise LocationError("No new street view found. Please try again.")
