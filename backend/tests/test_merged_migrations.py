@@ -32,10 +32,10 @@ def test_upgrade_both_branches_preserves_data(tmp_path, monkeypatch, start):
                     connection.execute(text("INSERT INTO round_results (user_id, mode, score, distance_km) VALUES (1, 'single', 5000, 0)"))
         command.upgrade(config, "head")
         with engine.connect() as connection:
-            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "e2710f49b6c2"
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == ScriptDirectory.from_config(config).get_current_head()
             assert not connection.exec_driver_sql("PRAGMA foreign_key_check").all()
             assert set(inspect(connection).get_table_names()) >= {
-                "users", "user_friends", "friend_requests", "revoked_tokens", "round_results"
+                "users", "user_friends", "friend_requests", "revoked_tokens", "round_results", "game_history"
             }
             if start != "base":
                 assert connection.scalar(text("SELECT count(*) FROM users")) == 2

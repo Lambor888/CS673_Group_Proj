@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useLobbySocket } from '../lobbyPage/useLobbySocket'
 import { ConnectionBanner } from '../lobbyPage/ConnectionBanner'
 import { GameCanvas } from './GameCanvas'
@@ -10,6 +10,7 @@ import { getLobbyGame, nextLobbyRound, submitLobbyGuess } from './api'
 import type { LobbyGame } from './api'
 import { leaveLobby } from '../lobbyPage/api'
 import './GamePage.css'
+import '../../common/gameLayout.css'
 
 function hasEnded(game: LobbyGame) {
     return game.over
@@ -17,6 +18,7 @@ function hasEnded(game: LobbyGame) {
 
 export function GamePage(){
     const { id } = useParams<{id: string}>()
+    if (!sessionStorage.getItem('token')) return <Navigate to="/authpage" replace />
     return id ? <LobbyGamePage key={id} id={id} /> : <p role="alert">Missing lobby ID.</p>
 }
 
@@ -65,9 +67,12 @@ function LobbyGamePage({ id }: { id: string }) {
                 const round = value.current_round
                 timer.current?.settimer(round.finished ? 0 : round.seconds_left)
                 // Show the round result for 5 s, then start the next round (the server ignores repeats).
-                if (round.finished && !value.over && advancedRound !== round.number) {
+                if (round.finished && !value.over && value.active_players.includes(playerId!) && advancedRound !== round.number) {
                     advancedRound = round.number
-                    advance = setTimeout(() => void nextLobbyRound(getToken(), id, round.number).catch(() => { advancedRound = 0 }), 5000)
+                    advance = setTimeout(() => {
+                        if (controller.signal.aborted || leavingRef.current || ended.current) { advancedRound = 0; return }
+                        void nextLobbyRound(getToken(), id, round.number).catch(() => { advancedRound = 0 })
+                    }, 5000)
                 }
             } catch (err) {
                 if (controller.signal.aborted) return
@@ -107,9 +112,10 @@ function LobbyGamePage({ id }: { id: string }) {
         setPending(true)
         setSubmitError('')
         try {
-            const value = await submitLobbyGuess(getToken(), id, guess)
+            const value = await submitLobbyGuess(getToken(), id, guess, game!.current_round.round_id)
             ended.current = hasEnded(value)
             setGame(value)
+            timer.current?.settimer(value.current_round.finished ? 0 : value.current_round.seconds_left)
         } catch (err) {
             setSubmitError(err instanceof Error ? err.message : 'Unable to submit guess.')
         } finally {
@@ -136,18 +142,19 @@ function LobbyGamePage({ id }: { id: string }) {
 
     return (
         <main className="multiplayer-page">
-          <header className="multiplayer-page__top">
-            <input className="multiplayer-page__round" aria-label="Round" readOnly
-              value={game ? `Round ${game.current_round.number}` : 'Round —'} />
-            {gameEnded ? <span role="status">Game over</span> : <Countdown ref={timer} />}
-            <button className="multiplayer-page__exit" type="button" disabled={leaving || pending}
-              onClick={() => void handleLeave()}>{leaving ? 'Leaving…' : 'Exit game'}</button>
+          <header className="multiplayer-page__top game-hud">
+            <span className="game-hud__round">{game ? `Round ${game.current_round.number}` : 'Round —'}</span>
+            <Countdown ref={timer} />
+            <span className="game-hud__score">HP: {game && userId !== null ? (game.points[userId] ?? 0).toLocaleString() : '—'}</span>
             <ConnectionBanner status={status} />
           </header>
           {gameEnded ? <section className="multiplayer-page__loading" aria-label="Game results">
               <div><h2>Game over</h2>
                 <p>The game has ended.</p>
                 {userId !== null && <p>Remaining HP: {game.points[userId] ?? 0}</p>}
+                <ol>{game.final_results?.map((player) => <li key={player.player_id}>
+                  #{player.rank} {player.username}: {player.final_score.toLocaleString()} HP
+                </li>)}</ol>
               </div>
             </section> : game ? <GameCanvas
             key={`${game.current_round.number}:${game.current_round.pano_id}`}
@@ -155,14 +162,16 @@ function LobbyGamePage({ id }: { id: string }) {
             : <div className="multiplayer-page__loading" role="status">
                 {error ? 'Waiting for the lobby street view. Retrying…' : 'Loading lobby street view…'}
               </div>}
-          <footer className="multiplayer-page__bottom">
-            <div className="multiplayer-page__controls">
+          <footer className="multiplayer-page__bottom game-footer">
+            <div className="multiplayer-page__controls game-controls">
               <button type="button" disabled={disabled || !guess} onClick={() => void handleSubmit()}>
                 {gameEnded ? 'Game over' : pending ? 'Submitting…' : submitted ? 'Submitted' : 'Submit guess'}
               </button>
               <label htmlFor="multiplayer-result">Result</label>
               <input id="multiplayer-result" readOnly value={resultText}
                 placeholder="Submit a guess to see your result" />
+              <button className="game-exit" type="button" disabled={leaving || pending}
+                onClick={() => void handleLeave()}>{leaving ? 'Leaving…' : 'Exit game'}</button>
             </div>
             {submitError && <p className="multiplayer-page__error" role="alert">{submitError}</p>}
             {error && <p className="multiplayer-page__error" role="alert">{error}</p>}

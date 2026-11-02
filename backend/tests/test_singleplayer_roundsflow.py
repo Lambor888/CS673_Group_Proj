@@ -45,9 +45,26 @@ def test_five_rounds_then_game_over_and_a_new_game(client):
 
     assert state["over"] and state["total_score"] == MAX_ROUND_SCORE * SINGLE_PLAYER_ROUNDS
     assert client.post("/games/single/next", headers=headers, json={"previous_round": 5}).status_code == 409
+    client.get("/games/single", headers=headers)
+    history = client.get("/profile/history", headers=headers).json()
+    assert len(history) == 1
+    assert history[0]["final_score"] == MAX_ROUND_SCORE * SINGLE_PLAYER_ROUNDS
+    assert history[0]["rounds_played"] == SINGLE_PLAYER_ROUNDS
 
     fresh = client.post("/games/single", headers=headers).json()     # "Play again"
     assert fresh["current_round"]["number"] == 1 and fresh["total_score"] == 0 and not fresh["over"]
+    assert len(client.get("/profile/history", headers=headers).json()) == 1
+
+
+def test_delayed_guess_does_not_submit_to_the_next_round(client):
+    _, headers = login_user(client, "delayed")
+    first = client.post("/games/single", headers=headers).json()["current_round"]
+    body = {"lat": 0, "lng": 0, "round_id": first["round_id"]}
+    assert client.post("/games/single/guess", headers=headers, json=body).status_code == 200
+    client.post("/games/single/next", headers=headers, json={"previous_round": 1})
+    assert client.post("/games/single/guess", headers=headers, json=body).status_code == 409
+    current = client.get("/games/single", headers=headers).json()["current_round"]
+    assert current["number"] == 2 and current["submitted"] == []
 
 
 def test_guesses_are_saved_to_profile_stats_once(client):

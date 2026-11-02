@@ -1,4 +1,4 @@
-.countdown {
+.round-countdown {
   min-width: 5ch;
   padding: 4px 14px;
   border-radius: 8px;
@@ -10,12 +10,12 @@
   text-align: center;
 }
 
-.countdown--idle { opacity: 0.6; }
-.countdown--warn { background: #b42318; animation: countdown-pulse 1s ease-in-out infinite; }
-.countdown--done { background: #7a1a12; }
+.round-countdown--idle { opacity: 0.6; }
+.round-countdown--warn { background: #b42318; animation: round-countdown-pulse 1s ease-in-out infinite; }
+.round-countdown--done { background: #7a1a12; }
 
-@keyframes countdown-pulse { 50% { opacity: 0.65; } }
+@keyframes round-countdown-pulse { 50% { opacity: 0.65; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .countdown--warn { animation: none; }
+  .round-countdown--warn { animation: none; }
 }

@@ -66,9 +66,11 @@ async def leave_flow(player_id: int) -> None:
 
     if player_id == lobby.host_id:
         lobby_manager.delete(lobby_id)
+        notify_player_left(lobby_id, player_id, True)
         await connection_manager.close_lobby(lobby_id, {"type": "lobby_closed"})
     else:
         lobby_manager.remove_player(lobby_id, player_id)
+        notify_player_left(lobby_id, player_id, False)
         await connection_manager.leave(player_id)
         await connection_manager.broadcast(lobby_id, lobby_message(lobby))
         await connection_manager.broadcast(lobby_id, chat_message(lobby, curr_player.username))

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Navigate } from 'react-router-dom'
-import { getToken } from '../userAuth/api'
-import { CountdownTimer } from './CountdownTimer'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { Countdown } from '../../common/countdown/Countdown'
+import type { CountdownHandle } from '../../common/countdown/Countdown'
 import { GameCanvas } from './GameCanvas'
 import { ApiError, getGame, nextRound, startGame, submitGuess } from './roundsApi'
 import type { GameState, LatLng } from './roundsApi'
 import './SinglePlayerPage.css'
 import './SinglePlayerRoundsPage.css'
+import '../../common/gameLayout.css'
 
 // If the player has a pin down when time is nearly up, send it just before the server's deadline
 // (a guess sent after the deadline is refused). Then ask the server for the final state.
@@ -18,7 +19,9 @@ function messageOf(err: unknown) {
 }
 
 export function SinglePlayerRoundsPage() {
-  const token = getToken()
+  const navigate = useNavigate()
+  const timer = useRef<CountdownHandle>(null)
+  const token = sessionStorage.getItem('token')
   const [game, setGame] = useState<GameState | null>(null)
   const [deadline, setDeadline] = useState<number | null>(null)
   const [guess, setGuess] = useState<LatLng | null>(null)
@@ -26,12 +29,19 @@ export function SinglePlayerRoundsPage() {
   const [error, setError] = useState('')
   const busy = useRef(false)
   const guessRef = useRef<LatLng | null>(null)
+  const currentRound = useRef('')
+  const version = useRef(0)
 
   useEffect(() => { guessRef.current = guess }, [guess])
+  useEffect(() => {
+    timer.current?.settimer(deadline === null ? 0 : Math.max(0, (deadline - Date.now()) / 1000))
+  }, [deadline])
 
   // Take whatever the server says: store it and restart the countdown from its seconds_left.
   const apply = useCallback((next: GameState) => {
     const round = next.current_round
+    if (currentRound.current !== round.round_id) setGuess(null)
+    currentRound.current = round.round_id
     setGame(next)
     setDeadline(round.finished ? null : Date.now() + round.seconds_left * 1000)
     if (round.finished) {
@@ -41,9 +51,11 @@ export function SinglePlayerRoundsPage() {
   }, [])
 
   const sync = useCallback(async () => {
-    if (!token) return
+    if (!token || busy.current) return
+    const requestedVersion = version.current
     try {
-      apply(await getGame(token))
+      const value = await getGame(token)
+      if (!busy.current && version.current === requestedVersion) apply(value)
     } catch (err) {
       setError(messageOf(err))
     }
@@ -52,23 +64,29 @@ export function SinglePlayerRoundsPage() {
   const submit = useCallback(async (pin: LatLng) => {
     if (!token || busy.current) return
     busy.current = true
+    version.current += 1
     setPending(true)
     setError('')
     try {
-      apply(await submitGuess(token, pin))
+      apply(await submitGuess(token, pin, currentRound.current))
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) await sync() // too late: the round just ended
-      else setError(messageOf(err))
+      if (err instanceof ApiError && err.status === 409) {
+        try { apply(await getGame(token)) }
+        catch (refreshError) { setError(messageOf(refreshError)) }
+      } else setError(messageOf(err))
     } finally {
       busy.current = false
       setPending(false)
     }
-  }, [token, apply, sync])
+  }, [token, apply])
 
   useEffect(() => {
     if (!token) return
     let cancelled = false
-    startGame(token).then((value) => {
+    getGame(token).catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === 404) return startGame(token)
+      throw err
+    }).then((value) => {
       if (!cancelled) apply(value)
     }).catch((err: unknown) => {
       if (!cancelled) setError(messageOf(err))
@@ -77,6 +95,13 @@ export function SinglePlayerRoundsPage() {
     })
     return () => { cancelled = true }
   }, [token, apply])
+
+  const running = !!game && !game.over
+  useEffect(() => {
+    if (!running) return
+    const retry = window.setInterval(() => { if (!busy.current) void sync() }, 3000)
+    return () => window.clearInterval(retry)
+  }, [running, sync])
 
   // The round ends when the timer does: send any pin the player has placed, then fetch the result.
   useEffect(() => {
@@ -103,6 +128,7 @@ export function SinglePlayerRoundsPage() {
       return
     }
     busy.current = true
+    version.current += 1
     setPending(true)
     setError('')
     try {
@@ -130,14 +156,12 @@ export function SinglePlayerRoundsPage() {
 
   return (
     <main className="single-player-page">
-      <header className="single-player-page__top rounds-hud">
-        {game && round && <>
-          <span className="rounds-hud__round">
-            Round {round.number}{round.total_rounds ? ` of ${round.total_rounds}` : ''}
+      <header className="single-player-page__top game-hud">
+          <span className="game-hud__round">
+            {round ? `Round ${round.number}${round.total_rounds ? ` / ${round.total_rounds}` : ''}` : 'Round —'}
           </span>
-          <CountdownTimer key={deadline ?? 'stopped'} deadline={deadline} />
-          <span className="rounds-hud__score">{(game.total_score ?? 0).toLocaleString()} pts</span>
-        </>}
+          <Countdown ref={timer} />
+          <span className="game-hud__score">Score: {(game?.total_score ?? 0).toLocaleString()} pts</span>
       </header>
       {round ? <GameCanvas key={`${round.number}:${round.pano_id}`}
         panoId={round.pano_id} onGuessChange={setGuess}
@@ -145,14 +169,16 @@ export function SinglePlayerRoundsPage() {
         : <div className="single-player-page__loading" role="status">
           {pending ? 'Finding a street-view location…' : 'No round loaded.'}
         </div>}
-      <footer className="single-player-page__bottom">
-        <div className="single-player-page__controls">
+      <footer className="single-player-page__bottom game-footer">
+        <div className="single-player-page__controls game-controls">
           <button type="button" onClick={() => void handleAction()}
             disabled={pending || (!!round && !round.finished && !guess)}>
             {buttonLabel}
           </button>
           <label htmlFor="round-result">Result</label>
           <input id="round-result" readOnly value={resultText} placeholder="Submit a guess to see your score" />
+          <button className="game-exit" type="button" disabled={pending}
+            onClick={() => navigate('/homepage', { replace: true })}>Exit game</button>
         </div>
         {game?.over && <p className="rounds-summary" role="status">
           Game over · {(game.total_score ?? 0).toLocaleString()} pts

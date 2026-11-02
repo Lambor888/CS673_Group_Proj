@@ -10,6 +10,8 @@ from app.modules.lobby import router as lobby_router
 from app.modules.lobby.service import LobbyManager
 from app.modules.location.service import Location
 from app.modules.rounds import router as rounds_router
+from app.modules.multiplayer_loop import router as multi_router
+from app.modules.auth.models import User
 from app.scoring import STARTING_POINTS, single_player_round_score
 
 # The true location in every test. Its coordinates are distinctive so we can check they never leak early.
@@ -20,10 +22,13 @@ OPPOSITE_SIDE = {"lat": -TRUE_LAT, "lng": TRUE_LNG - 180}  # about 20,000 km awa
 
 
 @pytest.fixture(autouse=True)
-def fresh_games(monkeypatch):
+def fresh_games(monkeypatch, db_session):
     rounds_router.single_games.clear()
-    rounds_router.lobby_games.clear()
+    multi_router.lobby_games.clear()
     monkeypatch.setattr(lobby_router, "lobby_manager", LobbyManager())  # rooms must not leak between tests
+    monkeypatch.setattr(multi_router, "lobby_manager", lobby_router.lobby_manager)
+    db_session.add_all([User(id=i, username=f"player{i}", password_hash="unused") for i in range(1, 5)])
+    db_session.commit()
     counter = iter(range(1, 1000))
     monkeypatch.setattr(
         rounds_router, "generate_location",
@@ -31,7 +36,7 @@ def fresh_games(monkeypatch):
     )
     yield
     rounds_router.single_games.clear()
-    rounds_router.lobby_games.clear()
+    multi_router.lobby_games.clear()
 
 
 def authenticate(user_id=1):
@@ -44,7 +49,7 @@ def expire_single(user_id=1):
 
 
 def expire_lobby(lobby_id):
-    rounds_router.lobby_games[UUID(lobby_id)].current.started_at -= 10_000
+    multi_router.lobby_games[UUID(lobby_id)].current.started_at -= 10_000
 
 
 def start_single(client):

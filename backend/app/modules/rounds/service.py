@@ -7,6 +7,7 @@ All point maths lives in app/scoring.py; this file only calls it.
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any, Callable
+from uuid import UUID, uuid4
 
 from app.scoring import (
     SINGLE_PLAYER_ROUNDS,
@@ -43,6 +44,7 @@ class GameRound:
     number: int                    # 1-based
     location: Any                  # a location.service.Location (needs .lat .lng .pano_id)
     players: set[int]              # user ids expected to guess this round
+    id: UUID = field(default_factory=uuid4)
     seconds: float = ROUND_SECONDS
     started_at: float = field(default_factory=lambda: monotonic())
     guesses: dict[int, PlayerGuess] = field(default_factory=dict)
@@ -102,6 +104,8 @@ class SinglePlayerGame:
     user_id: int
     total_rounds: int = SINGLE_PLAYER_ROUNDS
     rounds: list[GameRound] = field(default_factory=list)
+    saved_rounds: set[int] = field(default_factory=set)
+    history_saved: bool = False
 
     @property
     def current(self) -> GameRound:
@@ -171,6 +175,9 @@ class LobbyGame:
     lobby_id: Any
     points: dict[int, int]         # player id -> points left; 0 means eliminated
     rounds: list[GameRound] = field(default_factory=list)
+    history_saved: bool = False
+    departed: set[int] = field(default_factory=set)
+    eliminated_at: dict[int, int] = field(default_factory=dict)
 
     @property
     def active(self) -> set[int]:
@@ -194,8 +201,33 @@ class LobbyGame:
 
     def refresh(self) -> None:
         """Close the round if it is due and, exactly once per round, take points off the players."""
+        if self.over:
+            return
         self.current.refresh()
         self._settle()
+
+    def remove_player(self, player_id: int) -> None:
+        if player_id not in self.points or player_id in self.departed:
+            return
+        self.refresh()
+        self.departed.add(player_id)
+        if self.over:
+            return  # Preserve final results when someone leaves the results screen.
+        self.points[player_id] = 0
+        self.eliminated_at.setdefault(player_id, self.current.number)
+        if not self.current.finished:
+            self.current.players.discard(player_id)
+            self.current.guesses.pop(player_id, None)
+        if self.over:
+            self.current.finished = True
+            self.current.scored = True  # Forfeit ends the game without penalizing the winner.
+        else:
+            self.refresh()
+
+    def standings(self) -> list[tuple[int, int, int]]:
+        ordered = sorted(self.points, key=lambda pid: (
+            self.points[pid] > 0, self.eliminated_at.get(pid, 0), self.points[pid], -pid), reverse=True)
+        return [(pid, rank, self.points[pid]) for rank, pid in enumerate(ordered, 1)]
 
     def _settle(self) -> None:
         current = self.current
@@ -214,10 +246,15 @@ class LobbyGame:
             penalties = {pid: 0 for pid in penalties}
         else:
             self.points = new_points
+            for pid in current.players:
+                if self.points[pid] == 0:
+                    self.eliminated_at.setdefault(pid, current.number)
         current.penalties = penalties
 
     def guess(self, user_id: int, guess: PlayerGuess) -> PlayerGuess:
         self.refresh()
+        if user_id in self.departed:
+            raise GameError("You have left this game.")
         if self.over:
             raise GameError("The game is over.")
         result = self.current.submit(user_id, guess)

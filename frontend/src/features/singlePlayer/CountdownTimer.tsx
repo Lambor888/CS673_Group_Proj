@@ -26,12 +26,12 @@ export function CountdownTimer({ deadline }: Props) {
   }, [deadline])
 
   if (deadline === null) {
-    return <div className="countdown countdown--idle" role="timer" aria-label="No round running">--:--</div>
+    return <div className="round-countdown round-countdown--idle" role="timer" aria-label="No round running">--:--</div>
   }
   const seconds = Math.max(0, Math.ceil((deadline - now) / 1000))
-  const state = seconds === 0 ? ' countdown--done' : seconds <= WARNING_SECONDS ? ' countdown--warn' : ''
+  const state = seconds === 0 ? ' round-countdown--done' : seconds <= WARNING_SECONDS ? ' round-countdown--warn' : ''
   return (
-    <div className={`countdown${state}`} role="timer" aria-label={`${seconds} seconds left`}>
+    <div className={`round-countdown${state}`} role="timer" aria-label={`${seconds} seconds left`}>
       {format(seconds)}
     </div>
   )

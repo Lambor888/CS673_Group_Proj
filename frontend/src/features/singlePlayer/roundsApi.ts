@@ -13,6 +13,7 @@ export interface PlayerResult {
 }
 
 export interface RoundState {
+  round_id: string
   number: number
   total_rounds: number | null
   multiplier: number
@@ -78,8 +79,8 @@ export function getGame(token: string) {
   return call<GameState>(token, 'GET', 'single')
 }
 
-export function submitGuess(token: string, guess: LatLng) {
-  return call<GameState>(token, 'POST', 'single/guess', guess)
+export function submitGuess(token: string, guess: LatLng, roundId: string) {
+  return call<GameState>(token, 'POST', 'single/guess', { ...guess, round_id: roundId })
 }
 
 export function nextRound(token: string, previousRound: number) {

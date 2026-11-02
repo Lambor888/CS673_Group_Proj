@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.modules.auth.deps import get_current_user
-from app.modules.lobby import router as lobby_module
+from app.modules.profile.models import GameHistory, RoundResult
 from app.modules.location.service import Location, LocationError, generate_location
 from app.modules.rounds.service import (
-    GameError, GameRound, LobbyGame, PlayerGuess, SinglePlayerGame,
+    GameError, GameRound, PlayerGuess, SinglePlayerGame,
 )
 from app.scoring import haversine_distance
 
@@ -24,6 +24,7 @@ class Guess(BaseModel):
     model_config = ConfigDict(extra="forbid")
     lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
     lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
+    round_id: UUID | None = None
 
 
 class NextRound(BaseModel):
@@ -46,6 +47,7 @@ class PlayerResultOut(BaseModel):
 
 
 class RoundOut(BaseModel):
+    round_id: UUID
     number: int
     total_rounds: int | None           # None for lobby games: they last until one player is left
     multiplier: float                  # lobby penalty multiplier for this round
@@ -65,6 +67,7 @@ class FinalResultOut(BaseModel):
 
 
 class GameOut(BaseModel):
+    final_results: list[FinalResultOut] | None = None
     mode: str                          # "single" or "lobby"
     over: bool
     winner: int | None
@@ -94,6 +97,8 @@ def rule_errors():
 
 
 def to_player_guess(game_round: GameRound, body: Guess) -> PlayerGuess:
+    if body.round_id is not None and body.round_id != game_round.id:
+        raise HTTPException(409, "Round changed. Reload the current round before submitting.")
     loc = game_round.location
     distance = haversine_distance(loc.lat, loc.lng, body.lat, body.lng)
     return PlayerGuess(lat=body.lat, lng=body.lng, distance_km=round(distance, 3))
@@ -115,6 +120,7 @@ def round_out(game_round: GameRound, total_rounds: int | None) -> RoundOut:
                 penalty=game_round.penalties.get(pid),
             )
     return RoundOut(
+        round_id=game_round.id,
         number=game_round.number,
         total_rounds=total_rounds,
         multiplier=game_round.multiplier,
@@ -133,7 +139,26 @@ single_games: dict[int, SinglePlayerGame] = {}
 single_lock = Lock()
 
 
-def single_out(game: SinglePlayerGame) -> GameOut:
+def single_out(game: SinglePlayerGame, db: Session) -> GameOut:
+    unsaved = [r for r in game.rounds if r.scored and r.number not in game.saved_rounds]
+    save_game = game.over and not game.history_saved
+    try:
+        for r in unsaved:
+            guess = r.guesses.get(game.user_id)
+            if guess:
+                db.add(RoundResult(user_id=game.user_id, mode="single",
+                                   score=r.scores[game.user_id], distance_km=guess.distance_km))
+        if save_game:
+            db.add(GameHistory(user_id=game.user_id, mode="single", final_score=game.total_score,
+                               rounds_played=len(game.rounds), players=1, placement=None, won=False))
+        if unsaved or save_game:
+            db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    game.saved_rounds.update(r.number for r in unsaved)
+    if save_game:
+        game.history_saved = True
     return GameOut(
         mode="single", over=game.over, winner=None,
         active_players=[game.user_id], eliminated_players=[],
@@ -151,108 +176,40 @@ def find_single(user) -> SinglePlayerGame:
 
 
 @router.post("/single", response_model=GameOut)
-def start_single_game(user=Depends(get_current_user)):
+def start_single_game(user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Start a new 5-round game. If one is still in progress, return it instead."""
     with single_lock:
         game = single_games.get(user.id)
         if game is not None:
             game.refresh()
+            single_out(game, db)
             if not game.over:
-                return single_out(game)
+                return single_out(game, db)
         game = SinglePlayerGame.start(user.id, new_location)
         single_games[user.id] = game
-        return single_out(game)
+        return single_out(game, db)
 
 
 @router.get("/single", response_model=GameOut)
-def get_single_game(user=Depends(get_current_user)):
+def get_single_game(user=Depends(get_current_user), db: Session = Depends(get_db)):
     with single_lock:
-        return single_out(find_single(user))
+        return single_out(find_single(user), db)
 
 
 @router.post("/single/guess", response_model=GameOut)
-def single_guess(body: Guess, user=Depends(get_current_user)):
+def single_guess(body: Guess, user=Depends(get_current_user), db: Session = Depends(get_db)):
     with single_lock:
         game = find_single(user)
         with rule_errors():
             game.guess(user.id, to_player_guess(game.current, body))
-        return single_out(game)
+        return single_out(game, db)
 
 
 @router.post("/single/next", response_model=GameOut)
-def single_next_round(body: NextRound, user=Depends(get_current_user)):
+def single_next_round(body: NextRound, user=Depends(get_current_user), db: Session = Depends(get_db)):
     with single_lock:
         game = find_single(user)
+        single_out(game, db)
         with rule_errors():
             game.start_next(body.previous_round, new_location)
-        return single_out(game)
-
-
-# ---- Lobby ------------------------------------------------------------------
-lobby_games: dict[UUID, LobbyGame] = {}
-lobby_games_lock = Lock()  # when both locks are needed, always take lobby_lock first
-
-
-def lobby_out(game: LobbyGame) -> GameOut:
-    return GameOut(
-        mode="lobby", over=game.over, winner=game.winner,
-        active_players=sorted(game.active), eliminated_players=sorted(game.eliminated),
-        points=dict(game.points),
-        current_round=round_out(game.current, None),
-    )
-
-
-def find_lobby_game(lobby_id: UUID, user) -> LobbyGame:
-    game = lobby_games.get(lobby_id)
-    if game is None:
-        raise HTTPException(404, "No game in progress in this lobby.")
-    if user.id not in game.points:
-        raise HTTPException(403, "You are not part of this game.")
-    game.refresh()
-    return game
-
-
-@router.post("/lobby/{lobby_id}/start", response_model=GameOut)
-def start_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
-    """Host only. Everyone currently in the lobby plays; repeating the call returns the running game."""
-    with lobby_module.lobby_lock, lobby_games_lock:
-        lobby = lobby_module.lobby_manager.lobbies.get(lobby_id)
-        if lobby is None:
-            raise HTTPException(404, "Lobby not found")
-        if lobby.host_id != user.id:
-            raise HTTPException(403, "Only the host can start the game.")
-        existing = lobby_games.get(lobby_id)
-        if existing is not None:
-            existing.refresh()
-            if not existing.over:
-                return lobby_out(existing)
-        with rule_errors():
-            game = LobbyGame.start(lobby_id, set(lobby.players), new_location)
-        lobby_games[lobby_id] = game
-        return lobby_out(game)
-
-
-@router.get("/lobby/{lobby_id}", response_model=GameOut)
-def get_lobby_game(lobby_id: UUID, user=Depends(get_current_user)):
-    """Poll this to see the timer, who has guessed, points, and when the round is over."""
-    with lobby_games_lock:
-        return lobby_out(find_lobby_game(lobby_id, user))
-
-
-@router.post("/lobby/{lobby_id}/guess", response_model=GameOut)
-def lobby_guess(lobby_id: UUID, body: Guess, user=Depends(get_current_user)):
-    with lobby_games_lock:
-        game = find_lobby_game(lobby_id, user)
-        with rule_errors():
-            game.guess(user.id, to_player_guess(game.current, body))
-        return lobby_out(game)
-
-
-@router.post("/lobby/{lobby_id}/next", response_model=GameOut)
-def lobby_next_round(lobby_id: UUID, body: NextRound, user=Depends(get_current_user)):
-    """Any remaining player can call this once a round is over; extra calls return the same new round."""
-    with lobby_games_lock:
-        game = find_lobby_game(lobby_id, user)
-        with rule_errors():
-            game.start_next(body.previous_round, new_location)
-        return lobby_out(game)
+        return single_out(game, db)
