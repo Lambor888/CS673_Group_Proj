@@ -1,8 +1,9 @@
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-
-from app.modules.profile.models import RoundResult
+from datetime import datetime
+from pydantic import ConfigDict
+from app.modules.profile.models import RoundResult, GameHistory
 
 
 class Stats(BaseModel):
@@ -39,3 +40,29 @@ def stats_for(db: Session, user_id: int) -> Stats:
         best_distance_km=round(closest, 3) if closest is not None else None,
         average_distance_km=round(avg_km, 3) if avg_km is not None else None,
     )
+
+
+class HistoryEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    mode: str
+    final_score: int
+    rounds_played: int
+    players: int
+    placement: int | None
+    won: bool
+    created_at: datetime
+
+
+def record_game(db: Session, user_id: int, mode: str, final_score: int, rounds_played: int,
+                players: int = 1, placement: int | None = None, won: bool = False) -> None:
+    db.add(GameHistory(user_id=user_id, mode=mode, final_score=final_score, rounds_played=rounds_played,
+                       players=players, placement=placement, won=won))
+    db.commit()
+
+
+def history_for(db: Session, user_id: int, limit: int = 20) -> list[GameHistory]:
+    return list(db.scalars(
+        select(GameHistory).where(GameHistory.user_id == user_id)
+        .order_by(GameHistory.created_at.desc(), GameHistory.id.desc()).limit(limit)
+    ))
