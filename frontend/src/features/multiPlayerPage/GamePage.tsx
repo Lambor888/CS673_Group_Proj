@@ -6,7 +6,7 @@ import { GameCanvas } from './GameCanvas'
 import { Countdown } from '../../common/countdown/Countdown'
 import type { CountdownHandle } from '../../common/countdown/Countdown'
 import { getMe, getToken } from '../userAuth/api'
-import { getLobbyGame, submitLobbyGuess } from './api'
+import { getLobbyGame, nextLobbyRound, submitLobbyGuess } from './api'
 import type { LobbyGame } from './api'
 import { leaveLobby } from '../lobbyPage/api'
 import './GamePage.css'
@@ -36,13 +36,12 @@ function LobbyGamePage({ id }: { id: string }) {
     const version = useRef(0)
     const timer = useRef<CountdownHandle>(null)
     useEffect(() => {
-        timer.current?.settimer(180)
-    }, [id])
-    useEffect(() => {
         const controller = new AbortController()
         let refresh: ReturnType<typeof setTimeout> | undefined
         let previousRound = ''
         let playerId: number | null = null
+        let advancedRound = 0
+        let advance: ReturnType<typeof setTimeout> | undefined
         async function load() {
             if (ended.current) return
             const requestVersion = version.current
@@ -62,6 +61,14 @@ function LobbyGamePage({ id }: { id: string }) {
                 setGame(value)
                 ended.current = hasEnded(value)
                 setError('')
+                // Follow the server's clock: it decides when the round ends.
+                const round = value.current_round
+                timer.current?.settimer(round.finished ? 0 : round.seconds_left)
+                // Show the round result for 5 s, then start the next round (the server ignores repeats).
+                if (round.finished && !value.over && advancedRound !== round.number) {
+                    advancedRound = round.number
+                    advance = setTimeout(() => void nextLobbyRound(getToken(), id, round.number).catch(() => { advancedRound = 0 }), 5000)
+                }
             } catch (err) {
                 if (controller.signal.aborted) return
                 setError(err instanceof Error ? err.message : 'Unable to load street view.')
@@ -74,6 +81,7 @@ function LobbyGamePage({ id }: { id: string }) {
         return () => {
             controller.abort()
             clearTimeout(refresh)
+            clearTimeout(advance)
         }
     }, [id])
     // Stay connected to the lobby while playing: the server keeps your seat only while you're
