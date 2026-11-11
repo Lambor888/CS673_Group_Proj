@@ -25,6 +25,31 @@ class Location(BaseModel):
 LOCATIONS = json.loads((Path(__file__).parent / "locations.json").read_text(encoding="utf-8"))
 
 
+class CapitalPoint(BaseModel):
+    name: str = Field(min_length=1)
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
+
+
+class CapitalLocation(BaseModel):
+    code: str = Field(min_length=2, max_length=2)
+    country: str = Field(min_length=1)
+    capitals: list[CapitalPoint] = Field(min_length=1)
+
+
+CAPITALS = tuple(CapitalLocation.model_validate(row) for row in json.loads(
+    (Path(__file__).parent / 'capitals.json').read_text(encoding='utf-8')))
+
+
+def generate_capital_location(used_countries=()) -> CapitalLocation:
+    """Return a country and its capital coordinates, without calling Google.
+
+    Reuse the full pool after every country has appeared, allowing unlimited rounds.
+    """
+    candidates = [country for country in CAPITALS if country.code not in used_countries]
+    return random.choice(candidates or CAPITALS)
+
+
 def lookup_location(lat: float, lng: float) -> Location | None:
     key = settings.google_maps_api_key.strip()
     if not key:

@@ -114,6 +114,7 @@ export function HomePage() {
       <header className="home-page__header">
         <nav className="home-page__menu" aria-label="Game modes">
           <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
+          <button type="button" onClick={() => navigate('/capitalfinder')}>capitalfinder</button>
         </nav>
         <div className="home-page__account">
           <button type="button" className="home-page__player"

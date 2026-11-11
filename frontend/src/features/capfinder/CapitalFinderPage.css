@@ -1,0 +1,6 @@
+.capital-finder-page { grid-template-rows: auto minmax(320px, 1fr) auto; min-height: 560px; }
+.capital-finder-page__header { padding-top: 12px; padding-bottom: 12px; }
+.capital-finder-page__prompt { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.capital-finder-page__prompt > span:first-child { color: #64748b; font-size: 12px; }
+.capital-finder-page__prompt strong { font-size: 18px; }
+.capital-finder-page__map { min-width: 0; min-height: 0; background: #a9d7eb; }

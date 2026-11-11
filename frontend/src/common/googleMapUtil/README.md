@@ -54,6 +54,18 @@ not currently exposed as props.
 
 ## GuessMap: let the player select a location
 
+Optional props `blank` and `fill` default to `false`:
+
+```tsx
+<GuessMap blank fill onGuessChange={setGuess} disabled={submitted} />
+```
+
+`blank` hides geographic labels, administrative boundaries, roads, transit and
+POIs, retaining land/water shapes and pan/zoom/click interaction. Google attribution
+and required controls remain visible. `fill` fills an explicitly sized parent and
+hides the expand/collapse button. Existing street-view minimaps keep their defaults.
+Use the round ID as the React `key` to clear the pin and reset the viewport each round.
+
 ```tsx
 import { useState } from 'react'
 import { GuessMap } from '../../common/googleMapUtil/GuessMap'

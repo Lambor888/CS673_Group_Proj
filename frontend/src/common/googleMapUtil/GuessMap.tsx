@@ -6,9 +6,20 @@ interface Props {
   onGuessChange: (position: google.maps.LatLngLiteral) => void
   disabled?: boolean
   initialGuess?: google.maps.LatLngLiteral | null
+  blank?: boolean
+  fill?: boolean
 }
 
-export function GuessMap({ onGuessChange, disabled = false, initialGuess = null }: Props) {
+const blankStyles: google.maps.MapTypeStyle[] = [
+  { featureType: 'all', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  ...['administrative', 'road', 'poi', 'transit'].map(featureType => ({
+    featureType, stylers: [{ visibility: 'off' }],
+  })),
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#e8eddf' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#a9d7eb' }] },
+]
+
+export function GuessMap({ onGuessChange, disabled = false, initialGuess = null, blank = false, fill = false }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const callback = useRef(onGuessChange)
   const [expanded, setExpanded] = useState(false)
@@ -33,6 +44,7 @@ export function GuessMap({ onGuessChange, disabled = false, initialGuess = null 
           streetViewControl: false, mapTypeControl: false,
           fullscreenControl: false, zoomControl: true,
           gestureHandling: 'greedy', clickableIcons: false,
+          styles: blank ? blankStyles : undefined,
         })
         // A lightweight overlay avoids requiring a separate map ID for a pin.
         class GuessPin extends OverlayView {
@@ -86,14 +98,14 @@ export function GuessMap({ onGuessChange, disabled = false, initialGuess = null 
       resizeObserver?.disconnect()
       pin?.setMap(null)
     }
-  }, [])
+  }, [blank])
 
-  return <section className={`guess-map${expanded ? ' guess-map--expanded' : ''}`} aria-label="Choose a location on the world map">
+  return <section className={`guess-map${expanded ? ' guess-map--expanded' : ''}${fill ? ' guess-map--fill' : ''}`} aria-label="Choose a location on the world map">
     <div className="guess-map__toolbar">
       <span>World map</span>
-      <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+      {!fill && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
         {expanded ? 'Collapse map' : 'Expand map'}
-      </button>
+      </button>}
     </div>
     <div className="guess-map__body">
       <div ref={container} className="guess-map__canvas" />

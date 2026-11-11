@@ -48,7 +48,7 @@
   padding: 20px 24px;
   border-bottom: 1px solid #e5e7eb;
 }
-.home-page__menu { display: flex; flex-wrap: wrap; gap: 12px; }
+.home-page__menu { display: flex; flex-direction: column; gap: 12px; }
 .home-page__header button {
   padding: 10px 16px;
   border: 1px solid #d1d5db;
