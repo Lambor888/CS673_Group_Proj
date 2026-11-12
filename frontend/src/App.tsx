@@ -7,6 +7,7 @@ import { UserInfoPage } from './features/userInfo/UserInfoPage'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SinglePlayerRoundsPage } from './features/singlePlayer/SinglePlayerRoundsPage'
 import { CapitalFinderPage } from './features/capfinder/CapitalFinderPage'
+import { FlagMatcherPage } from './features/flags/FlagMatcherPage'
 export default function App() { 
     return (
     <BrowserRouter>
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/game/:id" element={<GamePage />} />
         <Route path="/singleplayer" element={<SinglePlayerRoundsPage />} />
         <Route path="/capitalfinder" element={<CapitalFinderPage />} />
+        <Route path="/flags" element={<FlagMatcherPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/" element={<Navigate to="/authpage" />} />
       </Routes>
