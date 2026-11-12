@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from datetime import datetime
+from app.modules.auth.models import User
 from app.modules.profile.models import RoundResult, GameHistory
 
 
@@ -65,3 +66,25 @@ def history_for(db: Session, user_id: int, limit: int = 20) -> list[GameHistory]
         select(GameHistory).where(GameHistory.user_id == user_id)
         .order_by(GameHistory.created_at.desc(), GameHistory.id.desc()).limit(limit)
     ))
+
+class LeaderboardEntry(BaseModel):
+    rank: int
+    username: str
+    best_score: int
+    games: int
+
+
+def leaderboard(db: Session, mode: str = "single", user_ids: list[int] | None = None,
+                limit: int = 50) -> list[LeaderboardEntry]:
+    """Each player's best final score in a mode, highest first. user_ids limits it (friends board)."""
+    best = func.max(GameHistory.final_score)
+    query = (select(User.username, best, func.count(GameHistory.id))
+             .join(User, User.id == GameHistory.user_id)
+             .where(GameHistory.mode == mode)
+             .group_by(User.id, User.username)
+             .order_by(best.desc(), User.username)
+             .limit(limit))
+    if user_ids is not None:
+        query = query.where(GameHistory.user_id.in_(user_ids))
+    return [LeaderboardEntry(rank=rank, username=name, best_score=score, games=games)
+            for rank, (name, score, games) in enumerate(db.execute(query), start=1)]
