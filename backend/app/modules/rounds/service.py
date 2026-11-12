@@ -23,7 +23,9 @@ from app.scoring import (
 
 # ---- Tunable settings -------------------------------------------------------
 ROUND_SECONDS = 60            # time a player has to guess each round
+ROUND_GUESS_SECONDS = 10
 MIN_LOBBY_PLAYERS = 2
+
 
 
 class GameError(Exception):
@@ -214,6 +216,17 @@ class LobbyGame:
             self.points = new_points
         current.penalties = penalties
 
+    def remove_player(self, player_id: int) -> None:
+        """The player left the lobby. They are out (0 points) but stay on the scoreboard."""
+        if player_id not in self.points or self.over:
+            return
+        self.points[player_id] = 0
+        current = self.current
+        if not current.finished:
+            current.players.discard(player_id)
+            current.guesses.pop(player_id, None)
+        self.refresh() 
+        
     def guess(self, user_id: int, guess: PlayerGuess) -> PlayerGuess:
         self.refresh()
         if self.over:

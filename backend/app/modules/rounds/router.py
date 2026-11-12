@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.modules.auth.deps import get_current_user
-from app.modules.lobby.router import lobby_lock, lobby_manager
+from app.modules.lobsby.router import lobby_lock, lobby_manager
 from app.modules.location.service import Location, LocationError, generate_location
 from app.modules.rounds.service import (
     GameError, GameRound, LobbyGame, PlayerGuess, SinglePlayerGame,
@@ -55,13 +55,6 @@ class RoundOut(BaseModel):
     submitted: list[int]               # user ids that have guessed so far
     answer: Point | None               # revealed once the round is finished
     results: dict[int, PlayerResultOut] | None  # filled once the round is finished
-
-
-class FinalResultOut(BaseModel):
-    player_id: int
-    username: str
-    rank: int
-    final_score: int
 
 
 class GameOut(BaseModel):
