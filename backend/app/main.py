@@ -11,6 +11,7 @@ from app.modules.profile.router import router as profile_router
 from app.modules.rounds.router import router as rounds_router
 from app.modules.multiplayer_loop.router import router as multiplayer_router
 from app.modules.capfinder.router import router as capfinder_router
+from app.modules.flags.router import router as flags_router
 app = FastAPI(title="GeoGuessr Clone")
 
 app.include_router(auth_router)
@@ -28,4 +29,5 @@ app.include_router(profile_router)
 app.include_router(rounds_router)
 app.include_router(multiplayer_router)
 app.include_router(capfinder_router)
+app.include_router(flags_router)
 
