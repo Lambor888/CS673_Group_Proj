@@ -13,3 +13,16 @@ export interface Stats {
 export function getStats() {
   return request<Stats>('/api/profile/stats', 'account', { method: 'GET' }, getToken())
 }
+
+export type LeaderboardScope = 'global' | 'friends'
+
+export interface LeaderboardEntry {
+  rank: number
+  username: string
+  best_score: number
+  games: number
+}
+
+export function getLeaderboard(scope: LeaderboardScope, mode = 'single') {
+  return request<LeaderboardEntry[]>(`/api/profile/leaderboard?mode=${mode}&scope=${scope}`, 'account', { method: 'GET' }, getToken())
+}
