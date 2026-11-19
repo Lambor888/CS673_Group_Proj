@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { request } from '../requestHandler'
 import { getToken, isLoggedIn } from '../userAuth/api'
+import '../singlePlayer/SinglePlayerPage.css'
+import '../../common/gameLayout.css'
+import './FlagMatcherPage.css'
 
 type Question = { id: string; number: number; score: number; flag_url: string; options: string[] }
 type Result = { correct: boolean; country: string; score: number; done: boolean }
@@ -20,6 +23,12 @@ function FlagMatcher() {
   const [result, setResult] = useState<Result | null>(null)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    post<Question>('/question')
+      .then(setQuestion)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Something went wrong.'))
+  }, [])
+
   async function run<T>(call: () => Promise<T>, then: (value: T) => void) {
     setError('')
     try { then(await call()) } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong.') }
@@ -28,26 +37,39 @@ function FlagMatcher() {
   const pick = (country: string) => {
     if (question) run(() => post<Result>('/answer', { id: question.id, country }), setResult)
   }
+  const resultText = result ? result.correct ? 'Correct!' : `Wrong, it was ${result.country}.` : ''
 
   return (
-    <main>
-      <button type="button" onClick={() => navigate('/homepage')}>Back</button>
-      <h1>Flag matcher</h1>
-      {error && <p role="alert">{error}</p>}
-      {!question && <button type="button" onClick={next}>Start</button>}
-      {question && (
-        <>
-          <p>Flag {question.number} of 10 · Score {result?.score ?? question.score}</p>
-          <img src={question.flag_url} alt="Flag to match" width={320} />
-          <div>
+    <main className="single-player-page flag-matcher-page" aria-label="Flag matcher">
+      <header className="game-hud flag-matcher-page__header">
+        <span className="game-hud__round">{question ? `Round ${question.number} / 10` : 'Round —'}</span>
+        <span className="game-hud__score">Score: {result?.score ?? question?.score ?? 0} pts</span>
+      </header>
+      <div className="flag-matcher-page__flag">
+        {question ? <img src={question.flag_url} alt="Flag to match" />
+          : <p role="status">{error ? 'No flag loaded.' : 'Loading a flag…'}</p>}
+      </div>
+      <footer className="single-player-page__bottom game-footer flag-matcher-page__footer">
+        {question && (
+          <div className="single-player-page__controls game-controls flag-matcher-page__options" role="group" aria-label="Choose the country">
             {question.options.map((country) => (
               <button key={country} type="button" disabled={!!result} onClick={() => pick(country)}>{country}</button>
             ))}
           </div>
-          {result && <p>{result.correct ? 'Correct!' : `Wrong, it was ${result.country}.`}</p>}
-          {result && <button type="button" onClick={next}>{result.done ? `Done: ${result.score}/10. Play again` : 'Next flag'}</button>}
-        </>
-      )}
+        )}
+        <div className="single-player-page__controls game-controls">
+          {(result || (!question && error)) && (
+            <button type="button" onClick={next}>
+              {!question ? 'Retry' : result?.done ? 'Play again' : 'Next round'}
+            </button>
+          )}
+          <label htmlFor="flag-result">Result</label>
+          <input id="flag-result" readOnly value={resultText} placeholder="Choose a country to see your result" />
+          <button className="game-exit" type="button" onClick={() => navigate('/homepage')}>Exit game</button>
+        </div>
+        {result?.done && <p className="flag-matcher-page__summary" role="status">Game over · {result.score} / 10 pts</p>}
+        {error && <p className="single-player-page__error" role="alert">{error}</p>}
+      </footer>
     </main>
   )
 }
