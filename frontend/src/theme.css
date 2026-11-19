@@ -1,0 +1,105 @@
+/* Party Pop theme: cream ground, ink outlines, hard offset shadows.
+   Loaded after every component stylesheet, so it reskins the existing class names. */
+:root {
+  --tomato: #FF5A36; --sun: #FFC53A; --cobalt: #3157F5;
+  --ink: #1B1830; --ink-soft: #5D5874;
+  --cream: #FFF2DC; --paper: #FFFAF1; --water: #BCD3FF;
+  --off: #EAE2D2; --off-ink: #A39C8E;
+  --line: 3px solid var(--ink);
+  --sh-s: 3px 3px 0 var(--ink); --sh-m: 5px 5px 0 var(--ink); --sh-l: 8px 8px 0 var(--ink);
+  --r-s: 10px; --r-m: 16px; --r-l: 24px;
+  --display: 'Bricolage Grotesque', 'Rubik', system-ui, sans-serif;
+  font-family: 'Rubik', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--cream);
+}
+body { background: var(--cream); color: var(--ink); }
+h1, h2, h3, .game-hud__score, .rounds-hud__score, .countdown, .round-countdown {
+  font-family: var(--display); font-weight: 800; letter-spacing: -0.01em;
+}
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
+
+/* Buttons */
+body button {
+  padding: 10px 18px; border: var(--line); border-radius: 999px;
+  background: var(--paper); color: var(--ink); font-weight: 700;
+  box-shadow: var(--sh-s); transition: transform .08s, box-shadow .08s;
+}
+body button:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: var(--sh-m); background: var(--paper); }
+body button:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: none; }
+body button:disabled { opacity: 1; background: var(--off); color: var(--off-ink); border-color: var(--off-ink); box-shadow: 3px 3px 0 var(--off-ink); }
+body button:focus-visible { outline: 3px solid var(--cobalt); outline-offset: 3px; }
+body .create-button, body .primary-button, body .glass-submit, body .user-info__primary,
+body button[type="submit"] { background: var(--tomato); color: #fff; }
+body .create-button:hover:not(:disabled), body .primary-button:hover:not(:disabled),
+body .glass-submit:hover:not(:disabled), body button[type="submit"]:hover:not(:disabled) { background: var(--tomato); }
+body .create-leave-button, body .game-exit, body .multiplayer-page__exit button { background: var(--paper); color: var(--ink); }
+
+/* Inputs */
+body input, body select, body textarea, body .glass-input {
+  padding: 10px 14px; border: var(--line); border-radius: var(--r-s);
+  background: #fff; color: var(--ink); box-shadow: inset 2px 2px 0 rgba(27,24,48,.08);
+}
+body input:focus, body .glass-input:focus { outline: 3px solid var(--sun); outline-offset: 1px; }
+
+/* Cards and panels */
+body .auth-card, body .profile-card, body .player-card, body .chat-box, body .glass-box,
+body .rounds-summary, body .stats-grid > *, body .flag-matcher-page__summary, body .user-info {
+  background: var(--paper); border: var(--line); border-radius: var(--r-m); box-shadow: var(--sh-m);
+}
+body .auth-card, body .profile-card { padding: 28px; }
+
+/* Home */
+body .home-page { background: var(--cream); }
+body .home-page__header { border-bottom: var(--line); background: var(--paper); }
+body .home-page__menu { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+body .home-page__menu button { border-radius: var(--r-m); padding: 18px; font-family: var(--display); font-size: 1.15rem; }
+body .home-page__menu button:nth-child(3n+1) { background: var(--sun); }
+body .home-page__menu button:nth-child(3n+2) { background: var(--water); }
+body .home-page__menu button:nth-child(3n+3) { background: var(--paper); }
+body .home-page__notification-dot { background: var(--tomato); border: 2px solid var(--ink); }
+body .join-form { padding: 14px; background: var(--ink); border-radius: var(--r-m); box-shadow: 5px 5px 0 var(--tomato); }
+body .home-page__player span, body .muted, body .switch-hint { color: var(--ink-soft); }
+body .create-error, body .form-error, body .create-leave-error, body .single-player-page__error { color: #C2361A; font-weight: 600; }
+
+/* In-game HUD: solid chips that stay readable over Street View */
+body .game-hud, body .rounds-hud { gap: 12px; background: transparent; }
+body .game-hud__round, body .game-hud__score, body .rounds-hud__round, body .rounds-hud__score,
+body .single-player-page__round, body .multiplayer-page__round {
+  padding: 6px 14px; background: var(--paper); color: var(--ink);
+  border: var(--line); border-radius: 999px; box-shadow: var(--sh-s);
+}
+body .countdown, body .round-countdown {
+  padding: 6px 14px; background: var(--sun); color: var(--ink);
+  border: var(--line); border-radius: 999px; box-shadow: var(--sh-s);
+}
+body .round-countdown--warn { background: var(--tomato); color: #fff; }
+body .round-countdown--done, body .round-countdown--idle { background: var(--off); color: var(--ink-soft); }
+
+/* Guess map */
+body .guess-map { background: var(--paper); border: var(--line); border-radius: var(--r-m); box-shadow: var(--sh-l); overflow: hidden; }
+body .guess-map__toolbar { background: var(--paper); border-bottom: var(--line); }
+body .guess-map__status, body .street-view-panel__status { color: var(--ink-soft); }
+body .street-view-panel { border-radius: var(--r-m); }
+
+/* Lobby */
+body .lobby-page, body .multiplayer-page, body .single-player-page, body .profile-page,
+body .flag-matcher-page, body .capital-finder-page { background: var(--cream); }
+body .player-list { gap: 14px; }
+body .player-card:nth-child(4n+1) { background: var(--sun); }
+body .player-card:nth-child(4n+2) { background: var(--water); }
+body .player-card:nth-child(4n+3) { background: #FFD3C7; }
+body .chat-messages, body .glass-messages { background: #fff; border: var(--line); border-radius: var(--r-s); }
+body .connection-banner { background: var(--sun); color: var(--ink); border-bottom: var(--line); font-weight: 600; }
+body .multiplayer-page__loading { background: var(--ink); color: var(--paper); }
+body .multiplayer-page__loading h1, body .multiplayer-page__loading h2 { color: var(--sun); }
+
+/* Flag matcher */
+body .flag-matcher-page__flag { border: var(--line); border-radius: var(--r-m); box-shadow: var(--sh-m); background: #fff; }
+body .flag-matcher-page__options button { border-radius: var(--r-m); }
+
+/* Tables (leaderboard) */
+body table { border-collapse: separate; border-spacing: 0; background: var(--paper); border: var(--line); border-radius: var(--r-m); box-shadow: var(--sh-m); overflow: hidden; }
+body th { background: var(--ink); color: var(--paper); font-family: var(--display); text-align: left; padding: 10px 14px; }
+body td { padding: 10px 14px; border-top: 2px solid var(--off); }
+body tbody tr:first-child td { background: var(--sun); font-weight: 700; }
