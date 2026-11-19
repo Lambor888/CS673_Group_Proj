@@ -11,6 +11,7 @@ import type { LobbyGame } from './api'
 import { leaveLobby } from '../lobbyPage/api'
 import './GamePage.css'
 import '../../common/gameLayout.css'
+import type { LobbySocketMessage } from '../lobbyPage/useLobbySocket'
 
 function hasEnded(game: LobbyGame) {
     return game.over
@@ -22,6 +23,60 @@ export function GamePage(){
     return id ? <LobbyGamePage key={id} id={id} /> : <p role="alert">Missing lobby ID.</p>
 }
 
+interface ChatMessage {
+    user: string
+    text: string
+}
+
+function MessageBox({ messages, send, connected }: {
+    messages: ChatMessage[]
+    send: (msg: LobbySocketMessage) => boolean
+    connected: boolean
+}) {
+    const [text, setText] = useState('')
+    const bottomRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [messages])
+
+    function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
+        e.preventDefault()
+        const trimmed = text.trim()
+        if (!trimmed) return
+        if (send({ type: 'chat', text: trimmed })) setText('')
+    }
+
+    return (
+        <div className="glass-box">
+            <div className="glass-messages">
+                {messages.map((m, i) => (
+                    <p key={i}>{m.user}: {m.text}</p>
+                ))}
+                <div ref={bottomRef} />
+            </div>
+            <form onSubmit={handleSubmit} className="glass-form">
+                <input
+                    className="glass-input"
+                    value={text}
+                    onChange={e => setText(e.target.value)}
+                    placeholder="Type a message"
+                    maxLength={200}
+                    autoComplete="off"
+                />
+                <button
+                    className="glass-submit"
+                    type="submit"
+                    aria-label="Send"
+                    disabled={!text.trim() || !connected}
+                >
+                </button>
+            </form>
+        </div>
+    )
+}
+
+
 function LobbyGamePage({ id }: { id: string }) {
     const navigate = useNavigate()
     const [guess, setGuess] = useState<google.maps.LatLngLiteral | null>(null)
@@ -32,6 +87,7 @@ function LobbyGamePage({ id }: { id: string }) {
     const [pending, setPending] = useState(false)
     const [leaving, setLeaving] = useState(false)
     const [leaveError, setLeaveError] = useState('')
+    const [messages, setMessages] = useState<ChatMessage[]>([])
     const ended = useRef(false)
     const leavingRef = useRef(false)
     const busy = useRef(false)
@@ -91,10 +147,13 @@ function LobbyGamePage({ id }: { id: string }) {
     }, [id])
     // Stay connected to the lobby while playing: the server keeps your seat only while you're
     // connected (or briefly after a drop), and this is where lobby_closed / removal reach you.
-    const handleMessage = useCallback(() => {
-        // Game messages will be handled here once multiplayer rounds land.
-    }, [])
-    const { status, stop } = useLobbySocket(id, handleMessage)
+    const handleMessage = useCallback((msg: LobbySocketMessage) => {
+        if (msg.type === 'chat'){
+            const chat = { user: String(msg.user), text: String(msg.text) }
+            setMessages(prevMessages => [...prevMessages, chat].slice(-200))
+        }
+    }, [id])
+    const { status, send, stop } = useLobbySocket(id, handleMessage)
 
     const gameEnded = game !== null && hasEnded(game)
     const submitted = userId !== null && !!game?.current_round.submitted.includes(userId)
@@ -177,6 +236,8 @@ function LobbyGamePage({ id }: { id: string }) {
             {error && <p className="multiplayer-page__error" role="alert">{error}</p>}
             {leaveError && <p className="multiplayer-page__error" role="alert">{leaveError}</p>}
           </footer>
+          <MessageBox messages={messages} send={send} connected={status === 'open'} />
+
         </main>
     )
 }
