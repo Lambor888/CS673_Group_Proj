@@ -116,6 +116,7 @@ export function HomePage() {
           <button type="button" onClick={() => navigate('/singleplayer')}>singleplayer</button>          
           <button type="button" onClick={() => navigate('/capitalfinder')}>capitalfinder</button>
           <button type="button" onClick={() => navigate('/leaderboard')}>leaderboard</button>
+          <button type="button" onClick={() => navigate('/flags')}>flags</button>
         </nav>
         <div className="home-page__account">
           <button type="button" className="home-page__player"
