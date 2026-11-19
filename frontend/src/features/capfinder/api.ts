@@ -1,3 +1,5 @@
+export type CapitalMode = 'map' | 'text'
+
 export interface CapitalState {
   round_id: string
   number: number
@@ -8,6 +10,11 @@ export interface CapitalState {
   score: number | null
   distance_km: number | null
   guess: google.maps.LatLngLiteral | null
+  mode: CapitalMode
+  country_place_id: string | null
+  country_bounds: google.maps.LatLngBoundsLiteral | null
+  submitted_answer: string | null
+  correct: boolean | null
 }
 
 export class CapitalApiError extends Error {
@@ -31,6 +38,9 @@ async function call(token: string, method: string, path: string, body?: unknown,
 
 export const startRound = (token: string, previous?: string, signal?: AbortSignal) =>
   call(token, 'POST', '/round', { previous_round_id: previous ?? null }, signal)
-export const getGame = (token: string, signal?: AbortSignal) => call(token, 'GET', '', undefined, signal)
+export const getGame = (token: string, signal?: AbortSignal) =>
+  call(token, 'GET', '', undefined, signal)
 export const submitGuess = (token: string, id: string, guess: google.maps.LatLngLiteral, signal?: AbortSignal) =>
   call(token, 'POST', `/round/${id}/guess`, guess, signal)
+export const submitAnswer = (token: string, id: string, answer: string, signal?: AbortSignal) =>
+  call(token, 'POST', `/round/${id}/answer`, { answer }, signal)

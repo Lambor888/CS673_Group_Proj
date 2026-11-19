@@ -21,6 +21,11 @@ export async function loadMaps(): Promise<google.maps.MapsLibrary> {
   return importLibrary('maps')
 }
 
+export async function loadGeometry(): Promise<google.maps.GeometryLibrary> {
+  configureLoader()
+  return importLibrary('geometry')
+}
+
 export async function loadStreetView(): Promise<google.maps.StreetViewLibrary> {
   configureLoader()
   return importLibrary('streetView')

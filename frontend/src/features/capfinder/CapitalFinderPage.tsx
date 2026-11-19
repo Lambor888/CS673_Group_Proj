@@ -3,11 +3,14 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Countdown } from '../../common/countdown/Countdown'
 import type { CountdownHandle } from '../../common/countdown/Countdown'
 import { GuessMap } from '../../common/googleMapUtil/GuessMap'
-import { CapitalApiError, getGame, startRound, submitGuess } from './api'
+import { CapitalApiError, getGame, startRound, submitAnswer, submitGuess } from './api'
 import type { CapitalState } from './api'
 import '../singlePlayer/SinglePlayerPage.css'
 import '../../common/gameLayout.css'
 import './CapitalFinderPage.css'
+
+// Public map configuration; this is not an API key. Other deployments can override it.
+const BOUNDARY_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_BOUNDARY_MAP_ID?.trim() || '8a4f58eaf6594d8cc0cd3856'
 
 export function CapitalFinderPage() {
   const token = sessionStorage.getItem('token')
@@ -17,7 +20,9 @@ export function CapitalFinderPage() {
 function CapitalGame({ token }: { token: string }) {
   const navigate = useNavigate()
   const [game, setGame] = useState<CapitalState | null>(null)
+  const mode = game?.mode
   const [guess, setGuess] = useState<google.maps.LatLngLiteral | null>(null)
+  const [answer, setAnswer] = useState('')
   const [pending, setPending] = useState(true)
   const [error, setError] = useState('')
   const timer = useRef<CountdownHandle>(null)
@@ -27,7 +32,10 @@ function CapitalGame({ token }: { token: string }) {
   const lifetime = useRef<AbortController | null>(null)
 
   const apply = useCallback((value: CapitalState) => {
-    if (roundId.current !== value.round_id) setGuess(value.guess)
+    if (roundId.current !== value.round_id) {
+      setGuess(value.guess)
+      setAnswer(value.submitted_answer ?? '')
+    }
     roundId.current = value.round_id
     setGame(value)
     setError('')
@@ -68,8 +76,10 @@ function CapitalGame({ token }: { token: string }) {
     return () => { controller.abort(); clearTimeout(refresh) }
   }, [running, token, apply])
 
+  const hasAnswer = mode === 'text' ? answer.trim().length > 0 : !!guess
+
   async function handleAction() {
-    if (busy.current || pending || (game && !game.finished && !guess)) return
+    if (busy.current || pending || (game && !game.finished && !hasAnswer)) return
     const signal = lifetime.current?.signal
     busy.current = true
     version.current += 1
@@ -78,7 +88,8 @@ function CapitalGame({ token }: { token: string }) {
     try {
       const value = !game ? await startRound(token, undefined, signal)
         : game.finished ? await startRound(token, game.round_id, signal)
-        : await submitGuess(token, game.round_id, guess!, signal)
+        : mode === 'text' ? await submitAnswer(token, game.round_id, answer, signal)
+          : await submitGuess(token, game.round_id, guess!, signal)
       if (!signal?.aborted) apply(value)
     } catch (err) {
       if (signal?.aborted) return
@@ -92,14 +103,15 @@ function CapitalGame({ token }: { token: string }) {
     }
   }
 
-  const result = !game?.finished ? '' : game.distance_km === null ? "Time's up · 0 pts"
-    : `${game.score?.toLocaleString()} pts · ${game.distance_km.toFixed(3)} km`
+  const result = !game?.finished ? '' : mode === 'text'
+    ? game.correct === null ? "Time's up · 0 pts" : `${game.correct ? 'Correct' : 'Incorrect'} · ${game.score?.toLocaleString()} pts`
+    : game.distance_km === null ? "Time's up · 0 pts" : `${game.score?.toLocaleString()} pts · ${game.distance_km.toFixed(3)} km`
 
   return <main className="single-player-page capital-finder-page">
     <header className="game-hud capital-finder-page__header">
       <span className="game-hud__round">{game ? `Round ${game.number}` : 'Round —'}</span>
       <div className="capital-finder-page__prompt">
-        <span>Find the capital of</span>
+        <span>{mode === 'text' ? 'Name the capital of' : 'Find the capital of'}</span>
         <strong>{game?.country ?? 'Loading…'}</strong>
         <Countdown ref={timer} />
       </div>
@@ -107,18 +119,30 @@ function CapitalGame({ token }: { token: string }) {
     </header>
     <div className="capital-finder-page__map">
       {game && <GuessMap key={game.round_id} blank fill initialGuess={game.guess}
-        onGuessChange={setGuess} disabled={pending || game.finished} />}
+        mapId={mode === 'text' ? BOUNDARY_MAP_ID : undefined}
+        countryPlaceId={mode === 'text' ? game.country_place_id ?? undefined : undefined}
+        bounds={mode === 'text' ? game.country_bounds ?? undefined : undefined}
+        showSelection={mode !== 'text'}
+        onGuessChange={setGuess} disabled={mode === 'text' || pending || game.finished} />}
     </div>
     <footer className="single-player-page__bottom game-footer">
-      <div className="single-player-page__controls game-controls">
-        <button type="button" onClick={() => void handleAction()}
-          disabled={pending || (!!game && !game.finished && !guess)}>
-          {pending ? 'Please wait…' : !game ? 'Retry' : game.finished ? 'Next round' : 'Submit guess'}
+      <form className="single-player-page__controls game-controls" onSubmit={event => {
+        event.preventDefault()
+        void handleAction()
+      }}>
+        {mode === 'text' && <>
+          <label htmlFor="capital-answer">Capital name</label>
+          <input id="capital-answer" value={answer} onChange={event => setAnswer(event.target.value)}
+            disabled={pending || !game || game.finished} maxLength={200} autoComplete="off" spellCheck={false}
+            placeholder="Enter the capital name" />
+        </>}
+        <button type="submit" disabled={pending || (!!game && !game.finished && !hasAnswer)}>
+          {pending ? 'Please wait…' : !game ? 'Retry' : game.finished ? 'Next round' : mode === 'text' ? 'Submit answer' : 'Submit guess'}
         </button>
         <label htmlFor="capital-result">Result</label>
         <input id="capital-result" readOnly value={result} placeholder="Submit a guess to see your score" />
         <button className="game-exit" type="button" onClick={() => navigate('/homepage', { replace: true })}>Exit game</button>
-      </div>
+      </form>
       {error && <p className="single-player-page__error" role="alert">{error}</p>}
     </footer>
   </main>
